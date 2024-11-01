@@ -1,0 +1,28 @@
+# Edge deployment configuration
+# No etcd, file-based config, minimal resource usage
+
+proxy:
+  http_addr: "0.0.0.0:9080"
+  workers: 2  # Fixed for edge
+  http2: true
+  grpc: false  # Disable for edge
+  websocket: true
+
+admin:
+  addr: "127.0.0.1:9180"
+  enabled: true
+
+observability:
+  victoria_metrics:
+    enabled: false
+  victoria_logs:
+    enabled: false
+  prometheus:
+    enabled: true
+
+lua:
+  pool_size: 4  # Small pool for edge
+  max_memory: 16777216  # 16MB
+
+deployment:
+  mode: edge

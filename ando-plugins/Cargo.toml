@@ -1,0 +1,24 @@
+[package]
+name = "ando-plugins"
+version.workspace = true
+edition.workspace = true
+description = "Built-in plugins for Ando API Gateway"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+ando-plugin = { path = "../ando-plugin" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+jsonwebtoken = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+chrono = { workspace = true }
+ipnet = { workspace = true }
+dashmap = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }

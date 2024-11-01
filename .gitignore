@@ -1,0 +1,19 @@
+# Rust artifacts
+/target
+/Cargo.lock
+
+# IDEs
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*

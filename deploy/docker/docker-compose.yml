@@ -1,0 +1,98 @@
+# Ando API Gateway — Docker Compose
+# Full stack: Ando + etcd + VictoriaMetrics + VictoriaLogs
+
+services:
+  # ==========================================
+  # Ando API Gateway
+  # ==========================================
+  ando:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    ports:
+      - "9080:9080" # HTTP proxy
+      - "9443:9443" # HTTPS proxy
+      - "9180:9180" # Admin API
+    volumes:
+      - ./../../config/ando.yaml:/etc/ando/ando.yaml:ro
+      - ./../../lua:/etc/ando/lua:ro
+      - ando-plugins:/etc/ando/plugins
+    environment:
+      - ANDO_ETCD__ENDPOINTS=http://etcd:2379
+      - ANDO_OBSERVABILITY__VICTORIA_METRICS__ENABLED=true
+      - ANDO_OBSERVABILITY__VICTORIA_METRICS__ENDPOINT=http://victoriametrics:8428/api/v1/write
+      - ANDO_OBSERVABILITY__VICTORIA_LOGS__ENABLED=true
+      - ANDO_OBSERVABILITY__VICTORIA_LOGS__ENDPOINT=http://victorialogs:9428/insert/jsonline
+    depends_on:
+      etcd:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ando-network
+
+  # ==========================================
+  # etcd — Configuration Store
+  # ==========================================
+  etcd:
+    image: bitnami/etcd:3.5
+    ports:
+      - "2379:2379"
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+    volumes:
+      - etcd-data:/bitnami/etcd
+    healthcheck:
+      test: [ "CMD", "etcdctl", "endpoint", "health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ando-network
+
+  # ==========================================
+  # VictoriaMetrics — Metrics Storage
+  # ==========================================
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.106.1
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm-data:/storage
+    command:
+      - "-storageDataPath=/storage"
+      - "-retentionPeriod=30d"
+      - "-httpListenAddr=:8428"
+    restart: unless-stopped
+    networks:
+      - ando-network
+
+  # ==========================================
+  # VictoriaLogs — Log Storage
+  # ==========================================
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.0.0
+    ports:
+      - "9428:9428"
+    volumes:
+      - vl-data:/vlogs
+    command:
+      - "-storageDataPath=/vlogs"
+      - "-retentionPeriod=30d"
+      - "-httpListenAddr=:9428"
+    restart: unless-stopped
+    networks:
+      - ando-network
+
+volumes:
+  etcd-data:
+  vm-data:
+  vl-data:
+  ando-plugins:
+
+
+networks:
+  ando-network:
+    driver: bridge

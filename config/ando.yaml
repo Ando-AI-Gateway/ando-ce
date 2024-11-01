@@ -1,0 +1,67 @@
+# Ando API Gateway Configuration
+# ================================
+
+# Unique node identifier (auto-generated if not set)
+# node_id: "ando-node-1"
+
+# --- Proxy Configuration ---
+proxy:
+  http_addr: "0.0.0.0:9080"
+  https_addr: "0.0.0.0:9443"
+  workers: 0  # 0 = auto-detect CPU cores
+  http2: true
+  grpc: true
+  websocket: true
+  body_buffer_size: 65536  # 64KB
+  connect_timeout_ms: 6000
+  read_timeout_ms: 15000
+  write_timeout_ms: 15000
+
+# --- Admin API Configuration ---
+admin:
+  addr: "127.0.0.1:9180"
+  enabled: true
+  # api_key: "your-admin-api-key-here"
+
+# --- etcd Configuration ---
+etcd:
+  endpoints:
+    - "http://127.0.0.1:2379"
+  prefix: "/ando"
+  timeout_ms: 5000
+  # username: ""
+  # password: ""
+
+# --- Observability Configuration ---
+observability:
+  victoria_metrics:
+    enabled: false
+    endpoint: "http://127.0.0.1:8428/api/v1/write"
+    push_interval_secs: 15
+    labels:
+      instance: "ando-node-1"
+      env: "production"
+
+  victoria_logs:
+    enabled: false
+    endpoint: "http://127.0.0.1:9428/insert/jsonline"
+    batch_size: 1000
+    flush_interval_secs: 5
+
+  prometheus:
+    enabled: true
+    path: "/metrics"
+
+# --- Lua Plugin Configuration ---
+lua:
+  plugin_dir: "/etc/ando/plugins"
+  pool_size: 32
+  timeout_ms: 5000
+  max_memory: 67108864  # 64MB
+  # package_path:
+  #   - "/opt/ando/lua/?.lua"
+
+# --- Deployment Configuration ---
+deployment:
+  mode: standard  # standard, standalone, edge
+  # config_file: "/etc/ando/standalone.yaml"

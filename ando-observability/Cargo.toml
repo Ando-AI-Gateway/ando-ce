@@ -1,0 +1,16 @@
+[package]
+name = "ando-observability"
+version.workspace = true
+edition.workspace = true
+description = "Metrics and logging for Ando API Gateway (VictoriaMetrics + VictoriaLogs)"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+prometheus = { workspace = true }
+chrono = { workspace = true }

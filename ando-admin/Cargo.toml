@@ -1,0 +1,25 @@
+[package]
+name = "ando-admin"
+version.workspace = true
+edition.workspace = true
+description = "Admin REST API for Ando API Gateway"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+ando-store = { path = "../ando-store" }
+ando-observability = { path = "../ando-observability" }
+ando-plugin = { path = "../ando-plugin" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Admin API HTTP server
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }

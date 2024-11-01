@@ -1,0 +1,28 @@
+[package]
+name = "ando-core"
+version.workspace = true
+edition.workspace = true
+description = "Core types, configuration, and routing for Ando API Gateway"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+matchit = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+figment = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+regex = { workspace = true }
+ipnet = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }

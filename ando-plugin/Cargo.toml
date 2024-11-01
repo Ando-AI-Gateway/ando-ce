@@ -1,0 +1,23 @@
+[package]
+name = "ando-plugin"
+version.workspace = true
+edition.workspace = true
+description = "Plugin system and Lua PDK for Ando API Gateway"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+mlua = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+bytes = { workspace = true }
+http = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
