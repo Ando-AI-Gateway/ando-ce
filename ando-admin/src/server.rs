@@ -11,6 +11,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::services::ServeDir;
 use tracing::info;
 
 /// Shared state for the Admin API.
@@ -51,42 +52,45 @@ impl AdminServer {
 
     /// Build the Axum router with all admin routes.
     fn build_router(&self) -> AxumRouter {
-        AxumRouter::new()
+        let admin_api = AxumRouter::new()
             // Health
-            .route("/apisix/admin/health", get(handlers::health::health_check))
-            .route("/apisix/admin/schema", get(handlers::health::schema))
+            .route("/health", get(handlers::health::health_check))
+            .route("/schema", get(handlers::health::schema))
             // Routes
-            .route("/apisix/admin/routes", get(handlers::routes::list_routes))
-            .route("/apisix/admin/routes", post(handlers::routes::create_route))
-            .route("/apisix/admin/routes/{id}", get(handlers::routes::get_route))
-            .route("/apisix/admin/routes/{id}", put(handlers::routes::update_route))
-            .route("/apisix/admin/routes/{id}", delete(handlers::routes::delete_route))
+            .route("/routes", get(handlers::routes::list_routes))
+            .route("/routes", post(handlers::routes::create_route))
+            .route("/routes/{id}", get(handlers::routes::get_route))
+            .route("/routes/{id}", put(handlers::routes::update_route))
+            .route("/routes/{id}", delete(handlers::routes::delete_route))
             // Services
-            .route("/apisix/admin/services", get(handlers::services::list_services))
-            .route("/apisix/admin/services", post(handlers::services::create_service))
-            .route("/apisix/admin/services/{id}", get(handlers::services::get_service))
-            .route("/apisix/admin/services/{id}", put(handlers::services::update_service))
-            .route("/apisix/admin/services/{id}", delete(handlers::services::delete_service))
+            .route("/services", get(handlers::services::list_services))
+            .route("/services", post(handlers::services::create_service))
+            .route("/services/{id}", get(handlers::services::get_service))
+            .route("/services/{id}", put(handlers::services::update_service))
+            .route("/services/{id}", delete(handlers::services::delete_service))
             // Upstreams
-            .route("/apisix/admin/upstreams", get(handlers::upstreams::list_upstreams))
-            .route("/apisix/admin/upstreams", post(handlers::upstreams::create_upstream))
-            .route("/apisix/admin/upstreams/{id}", get(handlers::upstreams::get_upstream))
-            .route("/apisix/admin/upstreams/{id}", put(handlers::upstreams::update_upstream))
-            .route("/apisix/admin/upstreams/{id}", delete(handlers::upstreams::delete_upstream))
+            .route("/upstreams", get(handlers::upstreams::list_upstreams))
+            .route("/upstreams", post(handlers::upstreams::create_upstream))
+            .route("/upstreams/{id}", get(handlers::upstreams::get_upstream))
+            .route("/upstreams/{id}", put(handlers::upstreams::update_upstream))
+            .route("/upstreams/{id}", delete(handlers::upstreams::delete_upstream))
             // Consumers
-            .route("/apisix/admin/consumers", get(handlers::consumers::list_consumers))
-            .route("/apisix/admin/consumers", post(handlers::consumers::create_consumer))
-            .route("/apisix/admin/consumers/{id}", get(handlers::consumers::get_consumer))
-            .route("/apisix/admin/consumers/{id}", delete(handlers::consumers::delete_consumer))
+            .route("/consumers", get(handlers::consumers::list_consumers))
+            .route("/consumers", post(handlers::consumers::create_consumer))
+            .route("/consumers/{id}", get(handlers::consumers::get_consumer))
+            .route("/consumers/{id}", delete(handlers::consumers::delete_consumer))
             // SSL
-            .route("/apisix/admin/ssls", get(handlers::ssl::list_ssl))
-            .route("/apisix/admin/ssls", post(handlers::ssl::create_ssl))
-            .route("/apisix/admin/ssls/{id}", get(handlers::ssl::get_ssl))
-            .route("/apisix/admin/ssls/{id}", delete(handlers::ssl::delete_ssl))
+            .route("/ssls", get(handlers::ssl::list_ssl))
+            .route("/ssls", post(handlers::ssl::create_ssl))
+            .route("/ssls/{id}", get(handlers::ssl::get_ssl))
+            .route("/ssls/{id}", delete(handlers::ssl::delete_ssl))
             // Plugins
-            .route("/apisix/admin/plugins/list", get(handlers::plugins::list_plugins))
-            // Metrics
+            .route("/plugins/list", get(handlers::plugins::list_plugins));
+
+        AxumRouter::new()
+            .nest("/apisix/admin", admin_api)
             .route("/metrics", get(metrics_handler))
+            .fallback_service(ServeDir::new("ando-ui/out"))
             .with_state(self.state.clone())
     }
 
