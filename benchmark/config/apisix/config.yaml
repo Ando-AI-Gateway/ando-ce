@@ -1,0 +1,55 @@
+apisix:
+  node_listen: 9080
+  enable_ipv6: false
+  enable_admin: true
+  enable_admin_cors: false
+  admin_listen:
+    ip: "0.0.0.0"
+    port: 9180
+  admin_key:
+    - name: "admin"
+      key: "edd1c9f034335f136f87ad84b625c8f1"
+      role: admin
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_listen:
+      ip: "0.0.0.0"
+      port: 9180
+  etcd:
+    host:
+      - "http://etcd:2379"
+    prefix: "/apisix"
+    timeout: 30
+
+nginx_config:
+  worker_processes: auto
+  event:
+    worker_connections: 1024
+  http:
+    enable_access_log: false
+    real_ip_header: "X-Real-IP"
+    real_ip_recursive: "on"
+    real_ip_from:
+      - 0.0.0.0/0
+
+plugin_attr: {}
+
+plugins:
+  - real-ip
+  - request-id
+  - key-auth
+  - jwt-auth
+  - basic-auth
+  - proxy-rewrite
+  - response-rewrite
+  - cors
+  - ip-restriction
+  - limit-req
+  - limit-count
+  - prometheus
+
+stream_plugins: []

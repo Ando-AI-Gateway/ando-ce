@@ -1,0 +1,38 @@
+proxy:
+  http_addr: "0.0.0.0:9080"
+  https_addr: "0.0.0.0:9443"
+  workers: 0  # 0 = auto-detect CPU cores
+  http2: false
+  grpc: false
+  websocket: false
+  body_buffer_size: 65536
+  connect_timeout_ms: 6000
+  read_timeout_ms: 15000
+  write_timeout_ms: 15000
+
+admin:
+  addr: "0.0.0.0:9180"
+  enabled: true
+
+etcd:
+  endpoints:
+    - "http://etcd:2379"
+  prefix: "/ando"
+  timeout_ms: 5000
+
+observability:
+  victoria_metrics:
+    enabled: false
+  victoria_logs:
+    enabled: false
+  prometheus:
+    enabled: false
+
+lua:
+  plugin_dir: "/etc/ando/plugins"
+  pool_size: 32
+  timeout_ms: 5000
+  max_memory: 67108864
+
+deployment:
+  mode: standard

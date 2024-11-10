@@ -1,0 +1,129 @@
+# ============================================================
+# Ando vs APISIX Benchmark Suite
+# ============================================================
+#
+# Services:
+#   echo         — shared upstream backend (tiny Go echo server)
+#   etcd         — shared config store (separate prefixes)
+#   ando         — Ando API gateway on port 9080 (admin: 9181)
+#   apisix       — Apache APISIX on port 8080 (admin: 9180)
+#   bench        — wrk2 + k6 load generator container
+#
+# Usage: see benchmark/README.md
+
+services:
+  # ==========================================
+  # Shared Echo Backend (upstream)
+  # ==========================================
+  echo:
+    image: ealen/echo-server:latest
+    ports:
+      - "3000:80"
+    environment:
+      - PORT=80
+    networks:
+      - bench-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ==========================================
+  # etcd — Shared Config Store
+  # ==========================================
+  etcd:
+    image: bitnami/etcd:3.5
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+    volumes:
+      - etcd-bench-data:/bitnami/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bench-network
+    restart: unless-stopped
+
+  # ==========================================
+  # Ando API Gateway
+  # ==========================================
+  ando:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+    ports:
+      - "9080:9080"   # proxy
+      - "9181:9180"   # admin API (mapped to 9181 to avoid conflict)
+    volumes:
+      - ./config/ando/ando.yaml:/etc/ando/ando.yaml:ro
+    environment:
+      - ANDO_ADMIN__ADDR=0.0.0.0:9180
+      - ANDO_ETCD__ENDPOINTS=http://etcd:2379
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - bench-network
+    restart: unless-stopped
+    healthcheck:
+      # Use bash TCP check — curl/wget not available in slim runtime image
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9180"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 8
+
+  # ==========================================
+  # Apache APISIX
+  # ==========================================
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    ports:
+      - "8080:9080"   # proxy (mapped to 8080)
+      - "9180:9180"   # admin API
+    volumes:
+      - ./config/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - bench-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9180/apisix/admin/routes", "-H", "X-API-KEY: edd1c9f034335f136f87ad84b625c8f1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 8
+
+  # ==========================================
+  # Benchmark Runner (wrk2 + k6 + hey)
+  # ==========================================
+  bench:
+    image: grafana/k6:latest
+    profiles: ["bench"]   # only starts when explicitly requested
+    volumes:
+      - ./k6:/scripts:ro
+      - ./results:/results
+    networks:
+      - bench-network
+    depends_on:
+      ando:
+        condition: service_healthy
+      apisix:
+        condition: service_healthy
+    entrypoint: ["sh"]
+    command: ["-c", "echo 'Bench container ready. Use docker compose run bench ...'"]
+
+volumes:
+  etcd-bench-data:
+
+networks:
+  bench-network:
+    driver: bridge
