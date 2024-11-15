@@ -11,6 +11,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tracing::info;
 
@@ -102,7 +103,12 @@ impl AdminServer {
         }
 
         let addr = self.config.addr;
-        let app = self.build_router();
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        let app = self.build_router().layer(cors);
 
         info!(addr = %addr, "Starting Admin API server");
 
