@@ -86,17 +86,31 @@ run_wrk() {
   local url="$1" name="$2" extra_args="${3:-}" conns="${4:-${CONNECTIONS}}"
   local out_file="${RESULTS_DIR}/wrk_${name//\//_}_${TIMESTAMP}.txt"
 
+  # Convert extra_args (specifically headers) to array for safe shell expansion
+  # Handles "-H 'name: value'" format
+  local cmd_args=()
+  if [[ "$extra_args" == -H* ]]; then
+    # Strip leading -H and quotes
+    local h_val=${extra_args#"-H "}
+    h_val=${h_val#"'"}
+    h_val=${h_val%"'"}
+    cmd_args=("-H" "$h_val")
+  elif [ -n "$extra_args" ]; then
+    cmd_args=($extra_args)
+  fi
+
   if [ "$LOAD_TOOL" = "wrk2" ]; then
     wrk2 -t "${THREADS}" -c "${conns}" -d "${DURATION}" \
-      -R "${WRM2_RATE}" --latency ${extra_args} "${url}" \
+      -R "${WRM2_RATE}" --latency "${cmd_args[@]}" "${url}" \
       2>&1 | tee "${out_file}"
   elif [ "$LOAD_TOOL" = "wrk" ]; then
     wrk -t "${THREADS}" -c "${conns}" -d "${DURATION}" \
-      --latency ${extra_args} "${url}" \
+      --latency "${cmd_args[@]}" "${url}" \
       2>&1 | tee "${out_file}"
   else
+    # hey uses -H for headers but often different syntax
     hey -z "${DURATION}" -c "${conns}" -q 0 \
-      ${extra_args} "${url}" \
+      "${cmd_args[@]}" "${url}" \
       2>&1 | tee "${out_file}"
   fi
 
