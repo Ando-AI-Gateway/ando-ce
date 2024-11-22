@@ -94,19 +94,23 @@ wait_for_admin() {
   exit 1
 }
 
-# ---- Start Go echo backend ----
+# ---- Start Rust echo backend ----
 start_backend() {
-  header "Step 1: Starting echo backend on port ${ECHO_PORT}"
-  local echo_dir="${SCRIPT_DIR}/echo-backend"
-  go run "${echo_dir}/main.go" --port "${ECHO_PORT}" &
+  header "Step 1: Building and starting Rust echo backend on port ${ECHO_PORT}"
+  info "Building echo-backend (release)..."
+  cargo build --release --bin echo-backend -q 2>&1
+  ok "echo-backend built"
+
+  "${PROJECT_ROOT}/target/release/echo-backend" --addr "0.0.0.0:${ECHO_PORT}" \
+    > "${RESULTS_DIR}/echo-backend.log" 2>&1 &
   ECHO_PID=$!
-  wait_for_port "Echo backend" "${ECHO_PORT}"
+  wait_for_port "Rust echo backend" "${ECHO_PORT}"
 }
 
 # ---- Build and start Ando ----
 start_ando() {
   header "Step 2: Building and starting Ando (Release mode)"
-  info "Running cargo build --release..."
+  info "Running cargo build --release --bin ando..."
   cargo build --release --bin ando -q 2>&1
   ok "Ando built successfully"
 

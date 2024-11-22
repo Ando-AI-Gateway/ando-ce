@@ -74,8 +74,9 @@ fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
-    // Create a Pingora server
-    let mut server = pingora::server::Server::new(None)?;
+    // Create a Pingora server with an empty configuration override to avoid argument conflicts
+    let opt = pingora_core::server::configuration::Opt::default();
+    let mut server = pingora::server::Server::new(Some(opt))?;
     server.bootstrap();
 
     // Initialize shared components
@@ -189,53 +190,7 @@ impl pingora_core::services::background::BackgroundService for AndoBackground {
             }
         }
 
-        // etcd sync (only in standard mode)
-        if !self.is_standalone {
-            let watcher = ConfigWatcher::new(self.etcd_config.clone(), self.cache.clone());
-
-            // Initial sync
-            match watcher.initial_sync().await {
-                Ok(_) => {
-                    // Rebuild router from synced routes
-                    let routes: Vec<_> = self
-                        .cache
-                        .routes
-                        .iter()
-                        .map(|r| r.value().clone())
-                        .collect();
-                    if let Err(e) = self.router.replace_all(routes) {
-                        error!(error = %e, "Failed to rebuild router after initial sync");
-                    }
-                }
-                Err(e) => {
-                    error!(error = %e, "Failed initial etcd sync (will retry via watch)");
-                }
-            }
-
-            // Start watching etcd for changes (runs forever)
-            let etcd_store = EtcdStore::connect(&self.etcd_config).await.ok();
-
-            // Start Admin API
-            let admin = AdminServer::new(
-                self.admin_config.clone(),
-                self.cache.clone(),
-                Arc::clone(&self.router),
-                Arc::clone(&self.metrics),
-                Arc::clone(&self.plugin_registry),
-                etcd_store,
-            );
-
-            tokio::spawn(async move {
-                if let Err(e) = admin.start().await {
-                    error!(error = %e, "Admin API server error");
-                }
-            });
-
-            // Watch etcd forever
-            if let Err(e) = watcher.watch_forever().await {
-                error!(error = %e, "etcd watcher error");
-            }
-        } else {
+        if self.is_standalone {
             info!("Running in standalone mode — etcd sync disabled");
 
             // Start Admin API without etcd
@@ -250,6 +205,62 @@ impl pingora_core::services::background::BackgroundService for AndoBackground {
 
             if let Err(e) = admin.start().await {
                 error!(error = %e, "Admin API server error");
+            }
+            return;
+        }
+
+        // Standard mode — etcd sync + Admin API with retries
+        let watcher = ConfigWatcher::new(self.etcd_config.clone(), self.cache.clone());
+        let admin_config = self.admin_config.clone();
+        let cache = self.cache.clone();
+        let router = Arc::clone(&self.router);
+        let metrics = Arc::clone(&self.metrics);
+        let registry = Arc::clone(&self.plugin_registry);
+        let etcd_config = self.etcd_config.clone();
+
+        // Spawn Admin API in its own task
+        tokio::spawn(async move {
+            loop {
+                let etcd_store = EtcdStore::connect(&etcd_config).await.ok();
+                let admin = AdminServer::new(
+                    admin_config.clone(),
+                    cache.clone(),
+                    Arc::clone(&router),
+                    Arc::clone(&metrics),
+                    Arc::clone(&registry),
+                    etcd_store,
+                );
+
+                info!("Starting Admin API server");
+                if let Err(e) = admin.start().await {
+                    error!(error = %e, "Admin API server error, retrying in 5s");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                } else {
+                    break; // Server exited normally (if that's possible)
+                }
+            }
+        });
+
+        // Loop for initial sync and watch
+        loop {
+            // Initial sync
+            if let Err(e) = watcher.initial_sync().await {
+                error!(error = %e, "Failed initial etcd sync, retrying in 5s");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                continue;
+            }
+
+            // Sync successful, rebuild router
+            let routes: Vec<_> = self.cache.routes.iter().map(|r| r.value().clone()).collect();
+            if let Err(e) = self.router.replace_all(routes) {
+                error!(error = %e, "Failed to rebuild router after initial sync");
+            }
+
+            // Watch forever (or until error)
+            info!("Entering etcd watch loop");
+            if let Err(e) = watcher.watch_forever().await {
+                error!(error = %e, "etcd watch error, restarting sync cycle in 5s");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             }
         }
     }

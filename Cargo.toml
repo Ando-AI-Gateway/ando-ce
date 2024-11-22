@@ -8,6 +8,7 @@ members = [
     "ando-admin",
     "ando-plugins",
     "ando-server",
+    "benchmark/echo-backend",
 ]
 resolver = "2"
 

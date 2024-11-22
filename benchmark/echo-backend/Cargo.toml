@@ -1,0 +1,17 @@
+[package]
+name = "echo-backend"
+version = "0.1.0"
+edition = "2024"
+description = "Ultra-fast HTTP echo backend for Ando benchmarks"
+
+[[bin]]
+name = "echo-backend"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
+http-body-util = "0.1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
