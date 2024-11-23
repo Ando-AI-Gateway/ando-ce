@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use ando_core::consumer::Consumer;
 
 /// Plugin execution phases, matching APISIX's lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -109,6 +110,10 @@ pub struct PluginContext {
 
     // --- Upstream selection ---
     pub upstream_addr: Option<String>,
+
+    /// Snapshot of consumers for auth plugins to validate against
+    /// (populated by the proxy before the plugin pipeline runs)
+    pub consumers: HashMap<String, Consumer>,
 }
 
 impl PluginContext {
@@ -143,6 +148,7 @@ impl PluginContext {
             service_id: None,
             request_start: std::time::Instant::now(),
             upstream_addr: None,
+            consumers: HashMap::new(),
         }
     }
 

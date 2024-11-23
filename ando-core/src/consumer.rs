@@ -5,9 +5,11 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Consumer {
     /// Unique identifier (typically the consumer name)
+    #[serde(default)]
     pub id: String,
 
     /// Username
+    #[serde(default)]
     pub username: String,
 
     /// Description

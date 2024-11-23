@@ -45,6 +45,34 @@ pub async fn create_consumer(
     Ok((StatusCode::CREATED, Json(json!({ "value": consumer }))))
 }
 
+pub async fn upsert_consumer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(mut consumer): Json<Consumer>,
+) -> Result<(StatusCode, Json<Value>), StatusCode> {
+    // Force the username/id from the path
+    if consumer.username.is_empty() {
+        consumer.username = id.clone();
+    }
+    consumer.id = id.clone();
+    consumer.updated_at = Some(Utc::now());
+    if consumer.created_at.is_none() {
+        consumer.created_at = Some(Utc::now());
+    }
+
+    if let Ok(mut store) = state.store.try_lock() {
+        if let Some(ref mut s) = *store {
+            let value = serde_json::to_string(&consumer).unwrap_or_default();
+            let _ = s.put("consumers", &id, &value).await;
+        }
+    }
+
+    let existed = state.cache.consumers.contains_key(&id);
+    state.cache.consumers.insert(id, consumer.clone());
+    let status = if existed { StatusCode::OK } else { StatusCode::CREATED };
+    Ok((status, Json(json!({ "value": consumer }))))
+}
+
 pub async fn delete_consumer(
     State(state): State<AppState>,
     Path(id): Path<String>,

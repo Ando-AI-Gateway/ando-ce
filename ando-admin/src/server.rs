@@ -79,6 +79,7 @@ impl AdminServer {
             .route("/consumers", get(handlers::consumers::list_consumers))
             .route("/consumers", post(handlers::consumers::create_consumer))
             .route("/consumers/{id}", get(handlers::consumers::get_consumer))
+            .route("/consumers/{id}", put(handlers::consumers::upsert_consumer))
             .route("/consumers/{id}", delete(handlers::consumers::delete_consumer))
             // SSL
             .route("/ssls", get(handlers::ssl::list_ssl))

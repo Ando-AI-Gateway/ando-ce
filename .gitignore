@@ -16,3 +16,7 @@
 # Environment
 .env
 .env.*
+
+# Benchmark run artifacts
+benchmark/results/
+benchmark/ando-native.log

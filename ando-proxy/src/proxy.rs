@@ -123,6 +123,13 @@ impl ProxyHttp for AndoProxy {
 
         plugin_ctx.service_id = route.service_id.clone();
 
+        // Inject consumer snapshot for auth plugins
+        for entry in self.cache.consumers.iter() {
+            plugin_ctx
+                .consumers
+                .insert(entry.key().clone(), entry.value().clone());
+        }
+
         // Merge plugins from various sources
         let mut merged_plugins = HashMap::new();
 
@@ -243,7 +250,14 @@ impl ProxyHttp for AndoProxy {
         let addr = &ando_ctx.upstream_addr;
         debug!(upstream = %addr, route = %ando_ctx.route_id, "Connecting to upstream");
 
-        let peer = HttpPeer::new(addr.as_str(), false, String::new());
+        let mut peer = HttpPeer::new(addr.as_str(), false, String::new());
+        // Allow connection reuse — but with a short idle timeout so we don't
+        // try to reuse connections the upstream has already closed.
+        peer.options.connection_timeout = Some(std::time::Duration::from_secs(5));
+        peer.options.read_timeout = Some(std::time::Duration::from_secs(30));
+        peer.options.write_timeout = Some(std::time::Duration::from_secs(30));
+        // Keep-alive idle timeout slightly shorter than most servers' defaults (65s)
+        peer.options.idle_timeout = Some(std::time::Duration::from_secs(60));
         Ok(Box::new(peer))
     }
 
