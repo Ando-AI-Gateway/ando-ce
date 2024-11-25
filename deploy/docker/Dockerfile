@@ -5,7 +5,7 @@
 # Build: docker build -t ando:latest -f deploy/docker/Dockerfile .
 # Run:   docker run -p 9080:9080 -p 9180:9180 ando:latest
 
-FROM rust:1.85-bookworm AS builder
+FROM rust:latest AS builder
 
 WORKDIR /build
 

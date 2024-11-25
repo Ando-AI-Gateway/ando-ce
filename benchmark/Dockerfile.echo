@@ -1,0 +1,17 @@
+# ── Build ────────────────────────────────────────────────────
+FROM rust:latest AS builder
+
+WORKDIR /build
+COPY . .
+RUN cargo build --release -p echo-backend
+
+# ── Runtime ──────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/echo-backend /usr/local/bin/
+
+EXPOSE 3000
+ENTRYPOINT ["echo-backend"]
+CMD ["--addr", "0.0.0.0:3000"]

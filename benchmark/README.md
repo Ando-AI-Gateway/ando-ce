@@ -1,192 +1,115 @@
-# Ando vs APISIX Benchmark Suite
+# Ando Benchmark Suite
 
-A **heavy-concurrency** benchmark comparing [Ando](../) (Rust/Pingora) against [Apache APISIX](https://apisix.apache.org) across real-world gateway scenarios.
+Compares **Ando** (Rust/Pingora) against **APISIX** across real-world gateway scenarios — plain proxy, key-auth plugin, and high-concurrency stress.
+Everything runs in Docker — no local toolchain required.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Install a load tool
-brew install wrk          # fast, latency percentiles
-brew install wrk2         # most accurate (HDR histogram, constant-rate)
-brew install k6           # scenario-based, spike/soak support
-brew install hey          # simple fallback
-
-# 2. Make scripts executable (first time only)
-chmod +x benchmark/bench.sh benchmark/scripts/*.sh
-
-# 3. Run the full benchmark
+# Requires: Docker Desktop (running)
 ./benchmark/bench.sh
 ```
 
-Results are saved to `benchmark/results/report_<timestamp>.md`.
+`bench.sh` will:
+1. **Build** Ando + echo-backend Docker images (`docker compose --build`)
+2. **Start** `echo` (upstream), `etcd` (APISIX config store), `ando`, `apisix`
+3. **Configure** Ando routes and APISIX routes via their Admin APIs
+4. **Run** load tests (baseline → plain → auth → stress → ramp)
+5. **Write** a Markdown report to `benchmark/results/`
+6. **Stop** all containers on exit
 
 ---
 
 ## Architecture
 
 ```
-  ┌─────────────────────────────────────────────┐
-  │            Load Generator                   │
-  │   wrk2 (500c, 12t, 50k rps target)         │
-  │   k6   (2000 rps constant-rate, 600 VUs)   │
-  └────────┬────────────────────────┬───────────┘
-           │                        │
-           ▼                        ▼
-  ┌────────────────┐      ┌────────────────────┐
-  │   Ando  :9080  │      │  APISIX  :8080     │
-  │  (Rust/Pingora)│      │  (OpenResty/LuaJIT)│
-  │  Admin : 9181  │      │  Admin   : 9180    │
-  └────────┬───────┘      └────────┬───────────┘
-           │                        │
-           └───────────┬────────────┘
-                       ▼
-           ┌───────────────────────┐
-           │   Echo Backend :3000  │
-           │  (shared upstream)    │
-           └───────────────────────┘
-                etcd :2379 (shared, separate prefixes)
+  ┌──────────────────────────────────────┐
+  │          Load Generator              │
+  │   wrk  (200c, Nc threads, Xs)        │
+  └────────┬─────────────────┬───────────┘
+           │                 │
+           ▼                 ▼
+  ┌─────────────────┐  ┌─────────────────┐
+  │  Ando  :9080    │  │ APISIX  :8080   │
+  │  (Rust/Pingora) │  │ (Nginx/LuaJIT)  │
+  │  Admin  :9180   │  │  Admin  :9181   │
+  └────────┬────────┘  └────────┬────────┘
+           │                    │
+           └────────┬───────────┘
+                    ▼
+  ┌────────────────────────────────────┐
+  │   Echo Backend  :3000              │
+  │   (Rust / Hyper, keep-alive)       │
+  └────────────────────────────────────┘
 ```
 
-Both gateways share the same etcd instance (different key prefixes) and forward to the same echo backend — ensuring a fair apples-to-apples comparison.
+APISIX uses **etcd** as its configuration store (automatically started).
 
 ---
 
 ## Benchmark Scenarios
 
-### wrk / wrk2 Scenarios (`run_benchmark.sh`)
-
 | # | Scenario | Connections | Duration | Description |
 |---|---|---|---|---|
-| 1 | **Plain Proxy** | 500 | 60s | Raw throughput — no plugins |
-| 2 | **Key-Auth Plugin** | 500 | 60s | Plugin overhead with `key-auth` |
-| 3 | **Concurrency Ramp** | 10→1000 | 20s/step | Find saturation point |
-| 4 | **Stress Test** | 1000 | 60s | Push to limits — errors expected |
-
-Default parameters (override with env vars):
-
-```bash
-BENCH_DURATION=60s            # duration per scenario
-BENCH_CONNECTIONS=500         # concurrent connections (Scenarios 1, 2)
-BENCH_THREADS=<2×CPU>         # wrk thread count (auto-detected)
-BENCH_STRESS_CONNECTIONS=1000 # connections for stress scenario
-BENCH_WRK2_RATE=50000         # target rps for wrk2 (HDR histogram mode)
-```
-
-### k6 Scenarios (`k6/benchmark.js`)
-
-| Scenario | VUs | Target RPS | Duration | Purpose |
-|---|---|---|---|---|
-| `quick` | 50–200 | 500 | 15s | Smoke test |
-| `heavy` | 200–600 | 2 000 (plain) / 1 000 (auth) | 60s each | Sustained load |
-| `stress` | 500–1 500 | 500 → 15 000 (ramp) | 150s | Find breaking point |
-| `spike` | 500–1 500 | 200 → 10 000 (burst) | 75s | Resilience to traffic spikes |
-| `soak` | 200–600 | 1 000 | 10 min | Memory leaks, stability |
+| 0 | **Baseline** | `BENCH_CONNECTIONS` | 30s | Direct hit to echo backend — establishes raw ceiling |
+| 1 | **Plain Proxy** | `BENCH_CONNECTIONS` | `BENCH_DURATION` | Both gateways with no plugins — raw proxy throughput |
+| 2 | **Key-Auth Plugin** | `BENCH_CONNECTIONS` | `BENCH_DURATION` | `key-auth` overhead compared head-to-head |
+| 3 | **Stress Test** | `BENCH_STRESS_CONNECTIONS` | `BENCH_DURATION` | Push to saturation |
+| 4 | **Ramp** | 10 → 1000 | 15s/step | Find saturation point |
 
 ---
 
 ## Running Specific Scenarios
 
-### wrk / wrk2
-
 ```bash
-# Individual scenarios
-./benchmark/bench.sh plain    # plain proxy only
-./benchmark/bench.sh auth     # key-auth plugin only
-./benchmark/bench.sh stress   # high-concurrency stress
-./benchmark/bench.sh ramp     # concurrency scaling table
-
-# Custom parameters
-BENCH_DURATION=120s \
-BENCH_CONNECTIONS=1000 \
-BENCH_STRESS_CONNECTIONS=2000 \
-./benchmark/bench.sh all
+./benchmark/bench.sh plain     # baseline + plain proxy
+./benchmark/bench.sh auth      # key-auth plugin (both gateways)
+./benchmark/bench.sh stress    # high-concurrency stress
+./benchmark/bench.sh ramp      # concurrency ramp table
+./benchmark/bench.sh baseline  # echo-backend ceiling only
+./benchmark/bench.sh all       # everything (default)
 ```
 
-### k6
+### Override parameters
 
 ```bash
-# Against Ando (local Docker stack)
-k6 run --env TARGET=ando --env SCENARIO=heavy benchmark/k6/benchmark.js
-
-# Against APISIX
-k6 run --env TARGET=apisix --env SCENARIO=heavy benchmark/k6/benchmark.js
-
-# Stress scenario
-k6 run --env TARGET=ando --env SCENARIO=stress benchmark/k6/benchmark.js
-
-# Spike resilience
-k6 run --env TARGET=ando --env SCENARIO=spike benchmark/k6/benchmark.js
-
-# Soak test (10 min)
-k6 run --env TARGET=ando --env SCENARIO=soak benchmark/k6/benchmark.js
+BENCH_DURATION=60s \
+BENCH_CONNECTIONS=400 \
+BENCH_STRESS_CONNECTIONS=1000 \
+BENCH_THREADS=8 \
+  ./benchmark/bench.sh all
 ```
 
 ---
 
-## What's Measured
+## Prerequisites
 
-| Metric | Description |
+| Tool | Required? |
 |---|---|
-| **RPS** | Requests per second at target load |
-| **p50 / p95 / p99** | Latency percentiles (median, tail, extreme tail) |
-| **Error rate** | % of non-2xx responses |
-| **Saturation point** | Concurrency level where RPS stops growing |
-| **Plugin overhead** | Delta between plain and key-auth RPS/latency |
+| **Docker Desktop** (running) | Yes |
 
-> **Why wrk2 over wrk?**  
-> `wrk` suffers from [coordinated omission](https://www.youtube.com/watch?v=lJ8ydIuPFeU) — it stops timing during backpressure, making high-load latency look better than it is. `wrk2` uses HDR Histogram at a constant arrival rate, giving true latency percentiles.
+That's it — wrk, Rust, and all other tools run inside containers.
 
 ---
 
-## thresholds (k6 pass/fail)
+## Ports
 
-```
-latency_plain p95 < 100ms   ✓
-latency_plain p99 < 250ms   ✓
-latency_auth  p95 < 150ms   ✓
-latency_auth  p99 < 300ms   ✓
-error rate         < 1%     ✓
-```
-
----
-
-## Stack Management
-
-```bash
-# Start stack only
-docker compose -f benchmark/docker-compose.bench.yml up -d
-
-# Rebuild Ando after code change
-docker compose -f benchmark/docker-compose.bench.yml up -d --build ando
-
-# Tail logs
-docker compose -f benchmark/docker-compose.bench.yml logs -f ando
-docker compose -f benchmark/docker-compose.bench.yml logs -f apisix
-
-# Stop & clean volumes
-docker compose -f benchmark/docker-compose.bench.yml down -v
-```
-
----
-
-## Port Reference
-
-| Service | Host Port | Description |
+| Service | Port | Description |
 |---|---|---|
-| **Ando** proxy | `9080` | HTTP under test |
-| **Ando** admin | `9181` | Admin API |
-| **APISIX** proxy | `8080` | HTTP under test |
-| **APISIX** admin | `9180` | Admin API |
+| Ando proxy | `9080` | HTTP under test |
+| Ando admin | `9180` | Admin API |
+| APISIX proxy | `8080` | HTTP under test |
+| APISIX admin | `9180` | Admin API (key: `bench-admin-key-00000000000000`) |
+| etcd | `2379` | APISIX config store |
 | Echo backend | `3000` | Shared upstream |
-| etcd | `2379` | Config store |
 
 ---
 
 ## Results
 
-Reports are saved as `benchmark/results/report_YYYYMMDD_HHMMSS.md`.
+Reports are written to `benchmark/results/report_YYYYMMDD_HHMMSS.md`.
 
 ```bash
 # Open the latest report
@@ -196,13 +119,29 @@ open $(ls -t benchmark/results/*.md | head -1)
 ls -lh benchmark/results/
 ```
 
-Raw per-run wrk output is saved alongside as `wrk_<scenario>_<timestamp>.txt`.
+Raw per-scenario wrk output is saved alongside as `wrk_<scenario>_<timestamp>.txt`.
+
+---
+
+## What's Measured
+
+| Metric | Description |
+|---|---|
+| **RPS** | Requests per second |
+| **p50 / p95 / p99** | Latency percentiles |
+| **Proxy efficiency** | RPS relative to backend ceiling (100% = zero overhead) |
+| **Saturation point** | Where RPS plateaus as connections increase |
+| **Plugin overhead** | Delta between plain and key-auth RPS |
 
 ---
 
 ## Notes
 
-- **First run is slow** — Ando is compiled from Rust source (~2–3 min). Subsequent runs use Docker layer cache.
-- **Mac vs Linux**: Docker Desktop on Mac adds networking overhead (~10–30% lower RPS vs native Linux). For production-accurate results, run on a Linux VM or bare-metal server.
-- **CPU pinning**: For maximal accuracy, isolate load generator and gateway onto separate CPU cores with `docker compose` CPU limits or run on separate machines.
-- **OS tuning**: On Linux, increase `ulimit -n` (open file descriptors) and `net.core.somaxconn` kernel parameter before running 1000+ connection stress tests.
+- **First run is slow** — Ando compiles from Rust source (~2–3 min). Subsequent runs reuse the Docker layer cache.
+- **APISIX startup**: APISIX waits for etcd to be healthy before starting; initial startup takes ~20s.
+- **macOS ulimits**: For stress tests with 500+ connections, raise open-file limits first:
+  ```bash
+  ulimit -n 65536
+  ```
+- **CPU affinity**: For the most accurate results, run on a Linux machine with isolated CPU cores.
+
