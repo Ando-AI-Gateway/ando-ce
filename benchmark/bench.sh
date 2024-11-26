@@ -15,8 +15,8 @@ set -euo pipefail
 trap cleanup EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RESULTS_DIR="${SCRIPT_DIR}/results"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+RESULTS_DIR="${SCRIPT_DIR}/results/${TIMESTAMP}"
 SCENARIO="${1:-all}"
 
 BENCH_NET="bench_net"
@@ -28,7 +28,7 @@ CONNECTIONS="${BENCH_CONNECTIONS:-200}"
 THREADS="${BENCH_THREADS:-4}"
 STRESS_CONNECTIONS="${BENCH_STRESS_CONNECTIONS:-500}"
 API_KEY="${BENCH_API_KEY:-bench-secret-key}"
-REPORT_FILE="${RESULTS_DIR}/report_${TIMESTAMP}.md"
+REPORT_FILE="${RESULTS_DIR}/report.md"
 
 # ---- Colors ----
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -102,6 +102,7 @@ echo -e "${NC}"
 info "Scenario  : ${SCENARIO}"
 info "Duration  : ${DURATION}"
 info "Conns     : ${CONNECTIONS}  (stress: ${STRESS_CONNECTIONS})"
+info "Run dir   : ${RESULTS_DIR}"
 echo ""
 echo -e "${YELLOW}Tip: BENCH_DURATION=60s BENCH_CONNECTIONS=400 $0 all${NC}"
 echo ""
@@ -185,9 +186,10 @@ warmup() {
 }
 
 # ── Run wrk in Docker ─────────────────────────────────────────
+# Outputs to ${RESULTS_DIR}/wrk_${label}.txt  (folder already has timestamp)
 run_wrk() {
   local url="$1" label="$2" extra_header="${3:-}" conns="${4:-${CONNECTIONS}}"
-  local out="${RESULTS_DIR}/wrk_${label}_${TIMESTAMP}.txt"
+  local out="${RESULTS_DIR}/wrk_${label}.txt"
   local cmd=("${WRK_IMAGE}" -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency)
   [ -n "${extra_header}" ] && cmd+=(-H "${extra_header}")
   cmd+=("${url}")
@@ -202,13 +204,15 @@ BASELINE_RPS="" BASELINE_P99=""
 ANDO_PLAIN_RPS="" ANDO_PLAIN_P99="" APISIX_PLAIN_RPS="" APISIX_PLAIN_P99=""
 ANDO_AUTH_RPS=""  ANDO_AUTH_P99=""  APISIX_AUTH_RPS=""  APISIX_AUTH_P99=""
 ANDO_STRESS_RPS="" ANDO_STRESS_P99="" APISIX_STRESS_RPS="" APISIX_STRESS_P99=""
+RAMP_ANDO_RPS=()   RAMP_ANDO_P99=()
+RAMP_APISIX_RPS=() RAMP_APISIX_P99=()
 
 bench_baseline() {
   header "Scenario 0 — Echo Backend Baseline (no proxy)"
   warmup "http://echo:3000/" "echo"
   run_wrk "http://echo:3000/" "baseline"
-  BASELINE_RPS=$(extract_rps "${RESULTS_DIR}/wrk_baseline_${TIMESTAMP}.txt")
-  BASELINE_P99=$(extract_p99 "${RESULTS_DIR}/wrk_baseline_${TIMESTAMP}.txt")
+  BASELINE_RPS=$(extract_rps "${RESULTS_DIR}/wrk_baseline.txt")
+  BASELINE_P99=$(extract_p99 "${RESULTS_DIR}/wrk_baseline.txt")
   ok "Baseline: ${BASELINE_RPS:-?} req/s  p99 ${BASELINE_P99:-?}"
 }
 
@@ -216,14 +220,14 @@ bench_plain() {
   header "Scenario 1 — Plain Proxy (${CONNECTIONS} conns, ${DURATION})"
   warmup "http://ando:9080/bench/plain" "Ando"
   run_wrk "http://ando:9080/bench/plain" "ando_plain"
-  ANDO_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_plain_${TIMESTAMP}.txt")
-  ANDO_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_plain_${TIMESTAMP}.txt")
+  ANDO_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_plain.txt")
+  ANDO_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_plain.txt")
   ok "Ando  plain: ${ANDO_PLAIN_RPS:-?} req/s  p99 ${ANDO_PLAIN_P99:-?}"
 
   warmup "http://apisix:8080/bench/plain" "APISIX"
   run_wrk "http://apisix:8080/bench/plain" "apisix_plain"
-  APISIX_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_plain_${TIMESTAMP}.txt")
-  APISIX_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_plain_${TIMESTAMP}.txt")
+  APISIX_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_plain.txt")
+  APISIX_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_plain.txt")
   ok "APISIX plain: ${APISIX_PLAIN_RPS:-?} req/s  p99 ${APISIX_PLAIN_P99:-?}"
 }
 
@@ -231,14 +235,14 @@ bench_auth() {
   header "Scenario 2 — Key-Auth Plugin (${CONNECTIONS} conns, ${DURATION})"
   warmup "http://ando:9080/bench/auth" "Ando+auth"
   run_wrk "http://ando:9080/bench/auth" "ando_auth" "apikey: ${API_KEY}"
-  ANDO_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_auth_${TIMESTAMP}.txt")
-  ANDO_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_auth_${TIMESTAMP}.txt")
+  ANDO_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_auth.txt")
+  ANDO_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_auth.txt")
   ok "Ando  auth: ${ANDO_AUTH_RPS:-?} req/s  p99 ${ANDO_AUTH_P99:-?}"
 
   warmup "http://apisix:8080/bench/auth" "APISIX+auth"
   run_wrk "http://apisix:8080/bench/auth" "apisix_auth" "apikey: ${API_KEY}"
-  APISIX_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_auth_${TIMESTAMP}.txt")
-  APISIX_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_auth_${TIMESTAMP}.txt")
+  APISIX_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_auth.txt")
+  APISIX_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_auth.txt")
   ok "APISIX auth: ${APISIX_AUTH_RPS:-?} req/s  p99 ${APISIX_AUTH_P99:-?}"
 }
 
@@ -247,14 +251,14 @@ bench_stress() {
   warn "High concurrency — some errors at saturation are expected."
   warmup "http://ando:9080/bench/plain" "Ando"
   run_wrk "http://ando:9080/bench/plain" "ando_stress" "" "${STRESS_CONNECTIONS}"
-  ANDO_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_stress_${TIMESTAMP}.txt")
-  ANDO_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_stress_${TIMESTAMP}.txt")
+  ANDO_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_stress.txt")
+  ANDO_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_stress.txt")
   ok "Ando  stress: ${ANDO_STRESS_RPS:-?} req/s  p99 ${ANDO_STRESS_P99:-?}"
 
   warmup "http://apisix:8080/bench/plain" "APISIX"
   run_wrk "http://apisix:8080/bench/plain" "apisix_stress" "" "${STRESS_CONNECTIONS}"
-  APISIX_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_stress_${TIMESTAMP}.txt")
-  APISIX_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_stress_${TIMESTAMP}.txt")
+  APISIX_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_stress.txt")
+  APISIX_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_stress.txt")
   ok "APISIX stress: ${APISIX_STRESS_RPS:-?} req/s  p99 ${APISIX_STRESS_P99:-?}"
 }
 
@@ -267,20 +271,25 @@ bench_ramp() {
   printf '%0.s─' {1..74}; echo ""
 
   for conns in "${RAMP_CONNS[@]}"; do
-    local ao="${RESULTS_DIR}/wrk_ramp_ando_${conns}_${TIMESTAMP}.txt"
-    local co="${RESULTS_DIR}/wrk_ramp_apisix_${conns}_${TIMESTAMP}.txt"
+    local ao="${RESULTS_DIR}/wrk_ramp_ando_${conns}.txt"
+    local co="${RESULTS_DIR}/wrk_ramp_apisix_${conns}.txt"
     docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
       -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
       http://ando:9080/bench/plain > "${ao}" 2>&1 || true
     docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
       -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
       http://apisix:8080/bench/plain > "${co}" 2>&1 || true
+    local ar ap cr cp
+    ar=$(extract_rps "${ao}" || echo 0)
+    ap=$(extract_p99  "${ao}" || echo "N/A")
+    cr=$(extract_rps "${co}" || echo 0)
+    cp=$(extract_p99  "${co}" || echo "N/A")
+    RAMP_ANDO_RPS+=("${ar}")
+    RAMP_ANDO_P99+=("${ap}")
+    RAMP_APISIX_RPS+=("${cr}")
+    RAMP_APISIX_P99+=("${cp}")
     printf "%-8s %-18s %-14s %-18s %-14s\n" \
-      "${conns}" \
-      "$(extract_rps "${ao}" || echo N/A)" \
-      "$(extract_p99  "${ao}" || echo N/A)" \
-      "$(extract_rps "${co}" || echo N/A)" \
-      "$(extract_p99  "${co}" || echo N/A)"
+      "${conns}" "${ar}" "${ap}" "${cr}" "${cp}"
   done
   DURATION="${old_dur}"
 }
@@ -291,6 +300,40 @@ write_report() {
   ts=$(date "+%Y-%m-%d %H:%M:%S %Z")
   cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || \
         grep -m1 'model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | xargs || echo "unknown")
+
+  # ── Helper: strip units, convert to integer/float ───────────
+  to_int() { echo "${1:-0}" | sed 's/[^0-9.]//g' | awk '{printf "%d",$1+0}'; }
+  to_ms()  { echo "${1:-0}" | sed 's/ms//' | awk '{printf "%.2f",$1+0}'; }
+
+  # ── Pre-compute chart values (integers for Mermaid) ─────────
+  local a_plain;  a_plain=$(to_int  "${ANDO_PLAIN_RPS}")
+  local c_plain;  c_plain=$(to_int  "${APISIX_PLAIN_RPS}")
+  local a_auth;   a_auth=$(to_int   "${ANDO_AUTH_RPS}")
+  local c_auth;   c_auth=$(to_int   "${APISIX_AUTH_RPS}")
+  local a_stress; a_stress=$(to_int "${ANDO_STRESS_RPS}")
+  local c_stress; c_stress=$(to_int "${APISIX_STRESS_RPS}")
+
+  local a_plain_ms;  a_plain_ms=$(to_ms  "${ANDO_PLAIN_P99}")
+  local c_plain_ms;  c_plain_ms=$(to_ms  "${APISIX_PLAIN_P99}")
+  local a_auth_ms;   a_auth_ms=$(to_ms   "${ANDO_AUTH_P99}")
+  local c_auth_ms;   c_auth_ms=$(to_ms   "${APISIX_AUTH_P99}")
+  local a_stress_ms; a_stress_ms=$(to_ms "${ANDO_STRESS_P99}")
+  local c_stress_ms; c_stress_ms=$(to_ms "${APISIX_STRESS_P99}")
+
+  # ── Ramp CSV values for line charts ─────────────────────────
+  local ramp_ando_rps_csv="" ramp_apisix_rps_csv=""
+  local ramp_ando_p99_csv="" ramp_apisix_p99_csv=""
+  if [ ${#RAMP_ANDO_RPS[@]} -gt 0 ]; then
+    local tmp=""
+    for v in "${RAMP_ANDO_RPS[@]}";   do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done
+    ramp_ando_rps_csv="${tmp}"; tmp=""
+    for v in "${RAMP_APISIX_RPS[@]}"; do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done
+    ramp_apisix_rps_csv="${tmp}"; tmp=""
+    for v in "${RAMP_ANDO_P99[@]}";   do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done
+    ramp_ando_p99_csv="${tmp}"; tmp=""
+    for v in "${RAMP_APISIX_P99[@]}"; do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done
+    ramp_apisix_p99_csv="${tmp}"
+  fi
 
   local ando_eff=""
   if [[ "${BASELINE_RPS:-}" =~ ^[0-9] ]] && [[ "${ANDO_PLAIN_RPS:-}" =~ ^[0-9] ]]; then
@@ -308,7 +351,8 @@ write_report() {
     echo "tie"
   }
 
-cat > "${REPORT_FILE}" <<EOF
+  # ── Part 1: Header + throughput & latency charts ─────────────
+  cat > "${REPORT_FILE}" <<EOF
 # Ando vs APISIX Benchmark Report
 
 **Date**        : ${ts}
@@ -316,6 +360,35 @@ cat > "${REPORT_FILE}" <<EOF
 **Duration**    : ${DURATION} per scenario
 **Threads**     : ${THREADS}
 **Connections** : ${CONNECTIONS}  (stress: ${STRESS_CONNECTIONS})
+**Run folder**  : \`$(basename "${RESULTS_DIR}")\`
+
+---
+
+## Throughput Comparison (req/s)
+
+> **Bar 1 = Ando** &nbsp;|&nbsp; **Bar 2 = APISIX** &nbsp;—&nbsp; Higher is better
+
+\`\`\`mermaid
+xychart-beta
+    title "Throughput — Requests per Second"
+    x-axis ["Plain Proxy", "Key-Auth", "Stress (${STRESS_CONNECTIONS}c)"]
+    y-axis "req/s"
+    bar [${a_plain}, ${a_auth}, ${a_stress}]
+    bar [${c_plain}, ${c_auth}, ${c_stress}]
+\`\`\`
+
+## p99 Latency Comparison (ms)
+
+> **Bar 1 = Ando** &nbsp;|&nbsp; **Bar 2 = APISIX** &nbsp;—&nbsp; Lower is better
+
+\`\`\`mermaid
+xychart-beta
+    title "p99 Latency (ms) — Lower is better"
+    x-axis ["Plain Proxy", "Key-Auth", "Stress (${STRESS_CONNECTIONS}c)"]
+    y-axis "latency ms"
+    bar [${a_plain_ms}, ${a_auth_ms}, ${a_stress_ms}]
+    bar [${c_plain_ms}, ${c_auth_ms}, ${c_stress_ms}]
+\`\`\`
 
 ---
 
@@ -343,41 +416,90 @@ cat > "${REPORT_FILE}" <<EOF
 
 ${ando_eff:+> **Ando proxy efficiency**: ${ando_eff} of raw backend throughput}
 
+EOF
+
+  # ── Part 2: Ramp charts (only when ramp was run) ─────────────
+  if [ -n "${ramp_ando_rps_csv}" ]; then
+    cat >> "${REPORT_FILE}" <<EOF
 ---
 
-## Scenario 0 — Baseline
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_baseline_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
+## Scenario 4 — Concurrency Ramp (10 → 1000 connections)
+
+> **Line 1 = Ando** &nbsp;|&nbsp; **Line 2 = APISIX**
+
+\`\`\`mermaid
+xychart-beta
+    title "Concurrency Ramp — Requests per Second"
+    x-axis ["10c", "50c", "100c", "250c", "500c", "1000c"]
+    y-axis "req/s"
+    line [${ramp_ando_rps_csv}]
+    line [${ramp_apisix_rps_csv}]
 \`\`\`
 
-## Scenario 1 — Plain Proxy (Ando)
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_ando_plain_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
-\`\`\`
-
-## Scenario 1 — Plain Proxy (APISIX)
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_apisix_plain_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
-\`\`\`
-
-## Scenario 2 — Key-Auth Plugin (Ando)
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_ando_auth_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
+\`\`\`mermaid
+xychart-beta
+    title "Concurrency Ramp — p99 Latency (ms, lower is better)"
+    x-axis ["10c", "50c", "100c", "250c", "500c", "1000c"]
+    y-axis "latency ms"
+    line [${ramp_ando_p99_csv}]
+    line [${ramp_apisix_p99_csv}]
 \`\`\`
 
-## Scenario 2 — Key-Auth Plugin (APISIX)
+### Ramp Data Table
+
+| Conns | Ando req/s | Ando p99 | APISIX req/s | APISIX p99 |
+|---|---|---|---|---|
+EOF
+    local RAMP_CONNS=(10 50 100 250 500 1000)
+    for i in "${!RAMP_CONNS[@]}"; do
+      printf "| %s | %s | %s | %s | %s |\n" \
+        "${RAMP_CONNS[$i]}" \
+        "${RAMP_ANDO_RPS[$i]:-N/A}" "${RAMP_ANDO_P99[$i]:-N/A}" \
+        "${RAMP_APISIX_RPS[$i]:-N/A}" "${RAMP_APISIX_P99[$i]:-N/A}" \
+        >> "${REPORT_FILE}"
+    done
+    echo "" >> "${REPORT_FILE}"
+  fi
+
+  # ── Part 3: Raw wrk outputs ──────────────────────────────────
+  cat >> "${REPORT_FILE}" <<EOF
+---
+
+## Raw wrk Outputs
+
+### Scenario 0 — Baseline
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_apisix_auth_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_baseline.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
-## Scenario 3 — Stress Test (Ando)
+### Scenario 1 — Plain Proxy (Ando)
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_ando_stress_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_ando_plain.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
-## Scenario 3 — Stress Test (APISIX)
+### Scenario 1 — Plain Proxy (APISIX)
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_apisix_stress_${TIMESTAMP}.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_apisix_plain.txt" 2>/dev/null || echo "N/A")
+\`\`\`
+
+### Scenario 2 — Key-Auth Plugin (Ando)
+\`\`\`
+$(cat "${RESULTS_DIR}/wrk_ando_auth.txt" 2>/dev/null || echo "N/A")
+\`\`\`
+
+### Scenario 2 — Key-Auth Plugin (APISIX)
+\`\`\`
+$(cat "${RESULTS_DIR}/wrk_apisix_auth.txt" 2>/dev/null || echo "N/A")
+\`\`\`
+
+### Scenario 3 — Stress Test (Ando)
+\`\`\`
+$(cat "${RESULTS_DIR}/wrk_ando_stress.txt" 2>/dev/null || echo "N/A")
+\`\`\`
+
+### Scenario 3 — Stress Test (APISIX)
+\`\`\`
+$(cat "${RESULTS_DIR}/wrk_apisix_stress.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
 ## Ando Log (last 30 lines)
@@ -385,6 +507,7 @@ $(cat "${RESULTS_DIR}/wrk_apisix_stress_${TIMESTAMP}.txt" 2>/dev/null || echo "N
 $(docker compose -f "${SCRIPT_DIR}/docker-compose.yml" logs --tail 30 ando 2>/dev/null || echo "N/A")
 \`\`\`
 EOF
+
   ok "Report: ${REPORT_FILE}"
 }
 
@@ -406,7 +529,7 @@ case "${SCENARIO}" in
   stress)
     bench_stress; write_report ;;
   ramp)
-    bench_ramp ;;
+    bench_ramp; write_report ;;
   *)
     err "Unknown scenario: ${SCENARIO}"
     echo "Usage: $0 [all|baseline|plain|auth|stress|ramp]"
@@ -415,6 +538,5 @@ esac
 
 header "Done!"
 ok "Results: ${RESULTS_DIR}/"
-latest=$(ls -t "${RESULTS_DIR}"/*.md 2>/dev/null | head -1 || true)
-[ -n "${latest}" ] && echo "  open ${latest}"
+[ -f "${REPORT_FILE}" ] && echo "  open ${REPORT_FILE}"
 echo ""
