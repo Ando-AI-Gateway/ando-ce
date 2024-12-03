@@ -128,6 +128,12 @@ impl MetricsCollector {
     }
 
     /// Record a completed HTTP request.
+    ///
+    /// Hot path — called once per proxied request.  Prometheus `with_label_values`
+    /// does a HashMap lookup + hash of the label set which is surprisingly
+    /// expensive at >100K req/s.  At some point switching to a pre-resolved
+    /// metric handle cache would help, but for now we keep it simple.
+    #[inline]
     pub fn record_request(
         &self,
         route: &str,
@@ -135,8 +141,12 @@ impl MetricsCollector {
         status: u16,
         duration_secs: f64,
     ) {
+        // Use a stack-allocated buffer for the status string to avoid
+        // calling `status.to_string()` (heap alloc) on every request.
+        let mut buf = itoa::Buffer::new();
+        let status_str = buf.format(status);
         self.http_requests_total
-            .with_label_values(&[route, method, &status.to_string()])
+            .with_label_values(&[route, method, status_str])
             .inc();
         self.http_request_duration
             .with_label_values(&[route])

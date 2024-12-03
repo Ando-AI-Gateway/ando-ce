@@ -8,30 +8,39 @@ use tracing::{debug, error, info, warn};
 /// Exports logs to VictoriaLogs via the JSON line stream API.
 ///
 /// Logs are buffered and flushed in batches for efficiency.
+/// When `enabled = false` the exporter is a true no-op: no channel is
+/// created and no allocation happens on every request.
 pub struct VictoriaLogsExporter {
-    sender: mpsc::Sender<serde_json::Value>,
+    /// `None` when logging is disabled — avoids channel overhead on every request.
+    sender: Option<mpsc::Sender<serde_json::Value>>,
 }
 
 impl VictoriaLogsExporter {
     /// Create a new exporter and start the background flush task.
     pub fn new(config: VictoriaLogsConfig) -> Self {
-        let (tx, rx) = mpsc::channel(10_000);
-
-        if config.enabled {
-            tokio::spawn(Self::flush_loop(config, rx));
+        if !config.enabled {
+            return Self { sender: None };
         }
 
-        Self { sender: tx }
+        let (tx, rx) = mpsc::channel(10_000);
+        tokio::spawn(Self::flush_loop(config, rx));
+        Self { sender: Some(tx) }
     }
 
-    /// Send a log entry (non-blocking).
+    /// Send a log entry (non-blocking). Does nothing when logging is disabled.
     pub fn log(&self, entry: serde_json::Value) {
-        if let Err(e) = self.sender.try_send(entry) {
-            warn!("Log buffer full, dropping entry: {}", e);
+        if let Some(ref sender) = self.sender {
+            if let Err(e) = sender.try_send(entry) {
+                warn!("Log buffer full, dropping entry: {}", e);
+            }
         }
     }
 
     /// Send an access log entry.
+    ///
+    /// When logging is disabled (`sender` is `None`), this is a no-op — the `json!`
+    /// macro and `format!` allocations are skipped entirely.
+    #[inline]
     pub fn access_log(
         &self,
         route_id: &str,
@@ -42,6 +51,9 @@ impl VictoriaLogsExporter {
         client_ip: &str,
         upstream_addr: Option<&str>,
     ) {
+        if self.sender.is_none() {
+            return;
+        }
         let entry = json!({
             "_msg": format!("{} {} {} {} {:.2}ms", method, uri, status, client_ip, latency_ms),
             "_time": Utc::now().to_rfc3339(),

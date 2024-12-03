@@ -130,12 +130,19 @@ impl PluginContext {
             None => (uri.clone(), String::new()),
         };
 
+        // Normalize header names to lowercase (HTTP headers are case-insensitive
+        // per RFC 7230). This lets get_header() do O(1) exact lookups.
+        let request_headers: HashMap<String, String> = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
         Self {
             request_method: method,
             request_uri: uri,
             request_path: path,
             request_query: query,
-            request_headers: headers,
+            request_headers,
             request_body: None,
             path_params: HashMap::new(),
             client_ip,
@@ -153,12 +160,19 @@ impl PluginContext {
     }
 
     /// Get a request header (case-insensitive).
+    ///
+    /// Note: headers are stored with lowercase keys by the proxy, so this
+    /// does a direct lookup first and only falls back to a scan if the key
+    /// contains uppercase characters.
+    #[inline]
     pub fn get_header(&self, name: &str) -> Option<&str> {
+        // Fast path: direct lookup if caller already passes lowercase
+        if let Some(v) = self.request_headers.get(name) {
+            return Some(v.as_str());
+        }
+        // Slow path: lowercase and retry
         let lower = name.to_lowercase();
-        self.request_headers
-            .iter()
-            .find(|(k, _)| k.to_lowercase() == lower)
-            .map(|(_, v)| v.as_str())
+        self.request_headers.get(&lower).map(|v| v.as_str())
     }
 
     /// Set a request header.
@@ -167,10 +181,14 @@ impl PluginContext {
     }
 
     /// Remove a request header.
+    #[inline]
     pub fn remove_header(&mut self, name: &str) {
+        // Direct removal (keys are stored lowercase)
+        if self.request_headers.remove(name).is_some() {
+            return;
+        }
         let lower = name.to_lowercase();
-        self.request_headers
-            .retain(|k, _| k.to_lowercase() != lower);
+        self.request_headers.remove(&lower);
     }
 
     /// Set a response header.

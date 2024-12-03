@@ -12,6 +12,11 @@ use clap::Parser;
 use std::sync::Arc;
 use tracing::{error, info};
 
+// Use jemalloc as the global allocator — reduces contention under
+// multi-threaded workloads compared to the system allocator.
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[derive(Parser)]
 #[command(name = "ando")]
 #[command(about = "Ando — Enterprise API Gateway built on Pingora")]
@@ -77,6 +82,43 @@ fn main() -> anyhow::Result<()> {
     // Create a Pingora server with an empty configuration override to avoid argument conflicts
     let opt = pingora_core::server::configuration::Opt::default();
     let mut server = pingora::server::Server::new(Some(opt))?;
+
+    // Apply worker thread count from config BEFORE bootstrap.
+    // Defaults to 0 in config which means "auto" (= number of logical CPUs).
+    // Without this the Pingora default is 1 thread, which is why throughput
+    // plateaus at ~9K req/s regardless of concurrency.
+    let worker_count = if config.proxy.workers == 0 {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+    } else {
+        config.proxy.workers
+    };
+    if let Some(conf) = Arc::get_mut(&mut server.configuration) {
+        conf.threads = worker_count;
+
+        // ── Upstream connection pool ─────────────────────────────────────────
+        // The MOST important setting for throughput.  Default (0) means no
+        // pooling → new TCP connection per request.  Each worker gets its own
+        // pool, so effective total = pool_size × workers.
+        conf.upstream_keepalive_pool_size = 1024;
+
+        // ── Disable work-stealing ────────────────────────────────────────────
+        // Each worker thread handles only its own tasks.  This eliminates
+        // cross-thread synchronisation and improves CPU cache locality for
+        // proxy workloads where every request is independent.
+        conf.work_stealing = false;
+
+        // ── No connect offload ───────────────────────────────────────────────
+        // With a large keepalive pool, virtually all upstream connections are
+        // reused.  Offloading the rare new connection to a dedicated thread
+        // pool just wastes 4 threads of CPU and adds context-switch latency.
+        // Disabled for maximum throughput.
+        conf.grace_period_seconds = Some(5);
+        conf.graceful_shutdown_timeout_seconds = Some(5);
+    }
+    info!(workers = worker_count, "Worker threads configured");
+
     server.bootstrap();
 
     // Initialize shared components
@@ -109,15 +151,15 @@ fn main() -> anyhow::Result<()> {
     );
 
     // Build the proxy service
-    let proxy = ando_proxy::AndoProxy {
-        router: Arc::clone(&router),
-        cache: cache.clone(),
-        plugin_registry: Arc::clone(&plugin_registry),
-        metrics: Arc::clone(&metrics),
-        logs_exporter: Arc::clone(&logs_exporter),
-    };
+    let proxy = ando_proxy::AndoProxy::new(
+        Arc::clone(&router),
+        cache.clone(),
+        Arc::clone(&plugin_registry),
+        Arc::clone(&metrics),
+        Arc::clone(&logs_exporter),
+    );
 
-    // Create Pingora HTTP proxy service
+    // Create Pingora HTTP proxy service with optimised settings
     let mut proxy_service = pingora_proxy::http_proxy_service(
         &server.configuration,
         proxy,

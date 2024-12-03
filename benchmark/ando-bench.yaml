@@ -2,9 +2,9 @@ proxy:
   http_addr: "0.0.0.0:9080"
   https_addr: "0.0.0.0:9443"
   workers: 0
-  connect_timeout_ms: 3000
-  read_timeout_ms: 10000
-  write_timeout_ms: 10000
+  connect_timeout_ms: 2000
+  read_timeout_ms: 5000
+  write_timeout_ms: 5000
 
 admin:
   addr: "0.0.0.0:9180"
@@ -21,6 +21,6 @@ observability:
 
 lua:
   plugin_dir: "/etc/ando/plugins"
-  pool_size: 16
+  pool_size: 4
   timeout_ms: 5000
   max_memory: 0

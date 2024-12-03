@@ -19,7 +19,10 @@ RUN apt-get update && apt-get install -y \
 # Copy workspace
 COPY . .
 
-# Build release binary
+# Build release binary with target-cpu=native for maximum SIMD/branch-prediction gains.
+# LTO + codegen-units=1 already set in Cargo.toml [profile.release].
+# inline-threshold=275 (default 225) — slightly more aggressive inlining on hot paths.
+ENV RUSTFLAGS="-C target-cpu=native -C inline-threshold=275"
 RUN cargo build --release --bin ando
 
 # ==========================================
@@ -57,4 +60,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -sf http://localhost:9180/apisix/admin/health || exit 1
 
 ENTRYPOINT ["ando"]
-CMD ["--config", "/etc/ando/ando.yaml"]
+CMD ["--config", "/etc/ando/ando.yaml", "--log-level", "warn"]

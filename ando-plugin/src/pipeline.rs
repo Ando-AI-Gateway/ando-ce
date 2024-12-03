@@ -1,15 +1,20 @@
 use crate::plugin::{Phase, PluginContext, PluginInstance, PluginResult};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, warn};
+use tracing::{error, warn};
 
 /// The plugin execution pipeline.
 ///
 /// Executes plugins in priority order for each phase.
 /// Short-circuits if any plugin returns a response or error.
+///
+/// Optimized: stores a phase_mask bitfield for O(1) `has_phase()` checks
+/// so callers can skip entire phase callbacks without HashMap lookups.
 pub struct PluginPipeline {
     /// Plugins sorted by phase and priority
     phases: HashMap<Phase, Vec<PluginInstance>>,
+    /// Bitmask of which phases are populated (1 << phase as u8).
+    phase_mask: u8,
 }
 
 impl PluginPipeline {
@@ -22,10 +27,7 @@ impl PluginPipeline {
 
         for instance in instances {
             let plugin_phases = instance.plugin.phases();
-            // We need to share the plugin across phases, so we clone the Arc
             for phase in &plugin_phases {
-                // We can't move instance multiple times, so we create new instances
-                // that share the same Arc<dyn Plugin>
                 let pi = PluginInstance {
                     plugin: Arc::clone(&instance.plugin),
                     config: instance.config.clone(),
@@ -35,13 +37,25 @@ impl PluginPipeline {
             }
         }
 
-        Self { phases }
+        let mut phase_mask: u8 = 0;
+        for phase in phases.keys() {
+            phase_mask |= 1 << (*phase as u8);
+        }
+
+        Self { phases, phase_mask }
+    }
+
+    /// O(1) check whether this pipeline has any plugins for the given phase.
+    #[inline(always)]
+    pub fn has_phase(&self, phase: Phase) -> bool {
+        self.phase_mask & (1 << (phase as u8)) != 0
     }
 
     /// Execute all plugins for a given phase.
     ///
     /// Returns `PluginResult::Continue` if all plugins pass,
     /// or short-circuits with a response/error.
+    #[inline]
     pub async fn execute_phase(
         &self,
         phase: Phase,
@@ -52,31 +66,17 @@ impl PluginPipeline {
         };
 
         for instance in plugins {
-            debug!(
-                plugin = %instance.name,
-                phase = %phase,
-                "Executing plugin"
-            );
-
             match instance
                 .plugin
                 .execute(phase, ctx, &instance.config)
                 .await
             {
-                PluginResult::Continue => {
-                    // Continue to next plugin
-                }
+                PluginResult::Continue => {}
                 PluginResult::Response {
                     status,
                     headers,
                     body,
                 } => {
-                    debug!(
-                        plugin = %instance.name,
-                        phase = %phase,
-                        status = status,
-                        "Plugin short-circuited with response"
-                    );
                     return PluginResult::Response {
                         status,
                         headers,

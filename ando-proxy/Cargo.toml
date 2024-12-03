@@ -26,3 +26,5 @@ dashmap = { workspace = true }
 arc-swap = { workspace = true }
 once_cell = { workspace = true }
 reqwest = { workspace = true }
+prometheus = { workspace = true }
+itoa = { workspace = true }

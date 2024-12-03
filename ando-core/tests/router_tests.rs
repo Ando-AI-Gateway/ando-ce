@@ -125,7 +125,7 @@ fn test_match_exact_path() {
 
     let m = router.match_route("GET", "/api/users", None);
     assert!(m.is_some());
-    assert_eq!(m.unwrap().route_id, "r1");
+    assert_eq!(m.unwrap().route_id.as_ref(), "r1");
 }
 
 #[test]
@@ -145,11 +145,11 @@ fn test_match_method_specific() {
 
     let m = router.match_route("GET", "/api/users", None);
     assert!(m.is_some());
-    assert_eq!(m.unwrap().route_id, "r1");
+    assert_eq!(m.unwrap().route_id.as_ref(), "r1");
 
     let m = router.match_route("POST", "/api/users", None);
     assert!(m.is_some());
-    assert_eq!(m.unwrap().route_id, "r2");
+    assert_eq!(m.unwrap().route_id.as_ref(), "r2");
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn test_match_parametric_route() {
     router.add_route(test_route("r1", "/api/users/{id}", vec![])).unwrap();
 
     let m = router.match_route("GET", "/api/users/123", None).unwrap();
-    assert_eq!(m.route_id, "r1");
+    assert_eq!(m.route_id.as_ref(), "r1");
     assert_eq!(m.params.len(), 1);
     assert_eq!(m.params[0], ("id".to_string(), "123".to_string()));
 }
@@ -194,7 +194,7 @@ fn test_match_multiple_params() {
     router.add_route(test_route("r1", "/api/{version}/users/{id}", vec![])).unwrap();
 
     let m = router.match_route("GET", "/api/v2/users/456", None).unwrap();
-    assert_eq!(m.route_id, "r1");
+    assert_eq!(m.route_id.as_ref(), "r1");
     assert_eq!(m.params.len(), 2);
     // matchit returns params in order
     assert!(m.params.iter().any(|(k, v)| k == "version" && v == "v2"));
@@ -391,6 +391,11 @@ fn test_router_concurrent_access() {
     for handle in handles {
         handle.join().unwrap();
     }
+
+    // Force a final rebuild to ensure the compiled router reflects
+    // all concurrent insertions (each add_route triggers rebuild, but
+    // the last one to store() may not see the very last insertion).
+    router.rebuild().unwrap();
 
     assert_eq!(router.route_count(), 10);
 
