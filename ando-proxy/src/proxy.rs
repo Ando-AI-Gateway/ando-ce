@@ -288,6 +288,8 @@ pub struct AndoCtx {
     pub request_start: std::time::Instant,
     /// Pre-built peer from thread-local cache — avoids DashMap lookup in upstream_peer.
     cached_peer: Option<HttpPeer>,
+    /// Tracks whether `fail_to_connect` has already retried once for this request.
+    retried: bool,
 }
 
 /// Cheap `Instant` sentinel — avoids calling `Instant::now()` on the fast
@@ -315,6 +317,13 @@ impl ProxyHttp for AndoProxy {
 
     fn new_ctx(&self) -> Self::CTX {
         None
+    }
+
+    /// Override: skip default ResponseCompressionBuilder module.
+    /// We don't use response compression; removing it eliminates per-request
+    /// module dispatch overhead that Pingora's default adds even when disabled.
+    fn init_downstream_modules(&self, _modules: &mut pingora_core::modules::http::HttpModules) {
+        // intentionally empty — no downstream modules needed
     }
 
     /// Phase 1: Request filtering — route matching and pre-proxy plugins.
@@ -383,6 +392,7 @@ impl ProxyHttp for AndoProxy {
                     pipeline: None,
                     request_start: instant_sentinel(),
                     cached_peer: Some(peer),
+                    retried: false,
                 });
                 return Ok(false);
             }
@@ -428,6 +438,7 @@ impl ProxyHttp for AndoProxy {
                 pipeline: None,
                 request_start: instant_sentinel(),
                 cached_peer: None, // will use peer_cache in upstream_peer
+                retried: false,
             });
             return Ok(false);
         }
@@ -550,6 +561,7 @@ impl ProxyHttp for AndoProxy {
             pipeline: Some(pipeline),
             request_start: std::time::Instant::now(),
             cached_peer: None,
+            retried: false,
         });
 
         Ok(false)
@@ -704,5 +716,65 @@ impl ProxyHttp for AndoProxy {
                 Some(&ando_ctx.upstream_addr),
             );
         }
+    }
+
+    // ── Error handling — Pingora best practices ──────────────────────
+
+    /// Suppress noisy downstream client disconnect errors.
+    ///
+    /// These occur when clients close connections with in-flight requests
+    /// (e.g., during benchmark shutdown or client timeouts) and are
+    /// expected in production — logging them just wastes I/O.
+    fn suppress_error_log(
+        &self,
+        _session: &Session,
+        _ctx: &Self::CTX,
+        error: &pingora_core::Error,
+    ) -> bool {
+        error.source_str() == "Downstream"
+    }
+
+    /// Retry on stale upstream pool connections (idempotent methods only).
+    ///
+    /// When a keepalive connection from the pool has been closed by the
+    /// upstream (stale), Pingora calls this with `client_reused = true`.
+    /// For safe/idempotent HTTP methods we mark the error as retryable
+    /// so Pingora transparently reconnects instead of returning 502.
+    fn error_while_proxy(
+        &self,
+        _peer: &HttpPeer,
+        session: &mut Session,
+        mut e: Box<pingora_core::Error>,
+        _ctx: &mut Self::CTX,
+        client_reused: bool,
+    ) -> Box<pingora_core::Error> {
+        if client_reused {
+            let method = session.req_header().method.as_str();
+            if matches!(method, "GET" | "HEAD" | "OPTIONS" | "PUT" | "DELETE") {
+                e.set_retry(true);
+            }
+        }
+        e
+    }
+
+    /// Allow one retry on upstream connection failure.
+    ///
+    /// At this point nothing has been sent upstream, so retrying is always
+    /// safe regardless of HTTP method. We limit to one retry to avoid
+    /// infinite loops on truly unreachable backends.
+    fn fail_to_connect(
+        &self,
+        _session: &mut Session,
+        _peer: &HttpPeer,
+        ctx: &mut Self::CTX,
+        mut e: Box<pingora_core::Error>,
+    ) -> Box<pingora_core::Error> {
+        if let Some(ando_ctx) = ctx.as_mut() {
+            if !ando_ctx.retried {
+                ando_ctx.retried = true;
+                e.set_retry(true);
+            }
+        }
+        e
     }
 }
