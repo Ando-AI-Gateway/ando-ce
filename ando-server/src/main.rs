@@ -14,8 +14,24 @@ use tracing::{error, info};
 
 // Use jemalloc as the global allocator — reduces contention under
 // multi-threaded workloads compared to the system allocator.
+//
+// Tuning via MALLOC_CONF:
+//   background_thread:true — dedicated thread for purging dirty pages → reduces
+//                            latency stalls from synchronous page releases.
+//   dirty_decay_ms:1000    — keep recently freed pages for 1s (default 10s)
+//                            → tighter RSS without sacrificing reuse.
+//   muzzy_decay_ms:1000    — reclaim mushed pages faster.
+//   metadata_thp:always    — use transparent huge pages for jemalloc metadata
+//                            → reduces TLB misses for internal allocator state.
+//   tcache_max:32768       — increase thread-cache maximum size class to 32KB
+//                            → more allocation sizes served from thread cache (no locks).
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// jemalloc tuning exported via the well-known `malloc_conf` symbol.
+#[allow(non_upper_case_globals)]
+#[unsafe(export_name = "malloc_conf")]
+pub static malloc_conf: &[u8] = b"background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000,metadata_thp:always,tcache_max:32768\0";
 
 #[derive(Parser)]
 #[command(name = "ando")]

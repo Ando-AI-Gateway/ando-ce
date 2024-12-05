@@ -277,17 +277,25 @@ impl AndoProxy {
 }
 
 /// Per-request context stored in the Pingora session.
+///
+/// **Size-optimised for cache locality**: large fields (`PluginContext`,
+/// `HttpPeer`) are boxed so the inline struct fits in ~88 bytes (~1 cache
+/// line) instead of ~850+ bytes.  At 200 concurrent connections across 8
+/// workers every Tokio task future carries this struct, so shrinking it
+/// dramatically reduces L1-D cache pressure.
 pub struct AndoCtx {
     pub route_id: Arc<str>,
-    pub plugin_ctx: Option<PluginContext>,
+    /// Boxed to avoid ~500+ bytes inline when None on the fast path.
+    pub plugin_ctx: Option<Box<PluginContext>>,
     pub upstream_addr: Arc<str>,
     pub pipeline: Option<Arc<PluginPipeline>>,
     /// Only meaningful on slow path (with plugins). Fast path skips setting
     /// this (uses Instant from UNIX_EPOCH as sentinel) and never reads it
     /// because logging() returns immediately for no-plugin routes.
     pub request_start: std::time::Instant,
-    /// Pre-built peer from thread-local cache — avoids DashMap lookup in upstream_peer.
-    cached_peer: Option<HttpPeer>,
+    /// Pre-built, **already-boxed** peer from thread-local cache.
+    /// `upstream_peer()` simply moves this box out — zero clone, zero alloc.
+    cached_peer: Option<Box<HttpPeer>>,
     /// Tracks whether `fail_to_connect` has already retried once for this request.
     retried: bool,
 }
@@ -375,7 +383,9 @@ impl ProxyHttp for AndoProxy {
                 fp.version = router_ver;
             }
             fp.entries.get(&route_match.route_id).map(|e| {
-                (e.has_plugins, Arc::clone(&e.upstream_addr), e.peer.clone())
+                // Clone the template peer directly into a Box — the Box is
+                // moved as-is into upstream_peer() (zero extra alloc there).
+                (e.has_plugins, Arc::clone(&e.upstream_addr), Box::new(e.peer.clone()))
             })
         });
 
@@ -385,6 +395,7 @@ impl ProxyHttp for AndoProxy {
             if !has_plugins {
                 // Ultra-fast path: thread-local hit + no plugins.
                 // Zero synchronised data-structure access.
+                // AndoCtx is ~88 bytes — fits in 1-2 cache lines.
                 *ctx = Some(AndoCtx {
                     route_id: route_match.route_id,
                     plugin_ctx: None,
@@ -511,13 +522,17 @@ impl ProxyHttp for AndoProxy {
                 headers: resp_headers,
                 body,
             } => {
+                let has_body = body.is_some();
                 let mut resp = ResponseHeader::build(status, None)?;
                 resp.insert_header("content-type", "application/json")?;
                 for (k, v) in resp_headers {
                     resp.insert_header(k, v)?;
                 }
+                // Signal end_of_stream correctly:
+                // - If body is present → header is not end, body is end
+                // - If body is None   → header IS end (fixes connection hang)
                 session
-                    .write_response_header(Box::new(resp), false)
+                    .write_response_header(Box::new(resp), !has_body)
                     .await?;
                 if let Some(body) = body {
                     session
@@ -556,7 +571,7 @@ impl ProxyHttp for AndoProxy {
 
         *ctx = Some(AndoCtx {
             route_id: route_match.route_id,
-            plugin_ctx: Some(plugin_ctx),
+            plugin_ctx: Some(Box::new(plugin_ctx)),
             upstream_addr: final_upstream,
             pipeline: Some(pipeline),
             request_start: std::time::Instant::now(),
@@ -570,8 +585,8 @@ impl ProxyHttp for AndoProxy {
     /// Phase 2: Select the upstream peer.
     ///
     /// If the thread-local fast path populated cached_peer in request_filter,
-    /// use it directly (zero synchronised lookups). Otherwise fall back to
-    /// the DashMap peer_cache.
+    /// the Box is simply moved out — zero clone, zero allocation.
+    /// Otherwise falls back to the DashMap peer_cache.
     async fn upstream_peer(
         &self,
         _session: &mut Session,
@@ -579,12 +594,13 @@ impl ProxyHttp for AndoProxy {
     ) -> Result<Box<HttpPeer>> {
         let ando_ctx = ctx.as_mut().expect("Context must be set by request_filter");
 
-        // Fast path: peer already resolved by thread-local cache
+        // Ultra-fast path: pre-boxed peer from thread-local cache.
+        // Just moves the Box — no clone, no allocation.
         if let Some(peer) = ando_ctx.cached_peer.take() {
-            return Ok(Box::new(peer));
+            return Ok(peer);
         }
 
-        // Slow path: DashMap lookup
+        // Slow path: DashMap lookup → clone + Box
         let addr = &ando_ctx.upstream_addr;
         if let Some(cached) = self.peer_cache.get(addr) {
             return Ok(Box::new(cached.value().clone()));

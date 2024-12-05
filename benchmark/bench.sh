@@ -179,10 +179,12 @@ setup_routes() {
 
 # ── Warm-up ───────────────────────────────────────────────────
 warmup() {
-  local url="$1" name="$2"
+  local url="$1" name="$2" extra_header="${3:-}"
   info "Warming up ${name} (10s)..."
-  docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
-    -t 4 -c 50 -d 10s "${url}" || warn "Warmup failed (continuing anyway)"
+  local cmd=("${WRK_IMAGE}" -t 4 -c 50 -d 10s)
+  [ -n "${extra_header}" ] && cmd+=(-H "${extra_header}")
+  cmd+=("${url}")
+  docker run --rm --network "${BENCH_NET}" "${cmd[@]}" || warn "Warmup failed (continuing anyway)"
 }
 
 # ── Run wrk in Docker ─────────────────────────────────────────
@@ -233,13 +235,13 @@ bench_plain() {
 
 bench_auth() {
   header "Scenario 2 — Key-Auth Plugin (${CONNECTIONS} conns, ${DURATION})"
-  warmup "http://ando:9080/bench/auth" "Ando+auth"
+  warmup "http://ando:9080/bench/auth" "Ando+auth" "apikey: ${API_KEY}"
   run_wrk "http://ando:9080/bench/auth" "ando_auth" "apikey: ${API_KEY}"
   ANDO_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ando_auth.txt")
   ANDO_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ando_auth.txt")
   ok "Ando  auth: ${ANDO_AUTH_RPS:-?} req/s  p99 ${ANDO_AUTH_P99:-?}"
 
-  warmup "http://apisix:8080/bench/auth" "APISIX+auth"
+  warmup "http://apisix:8080/bench/auth" "APISIX+auth" "apikey: ${API_KEY}"
   run_wrk "http://apisix:8080/bench/auth" "apisix_auth" "apikey: ${API_KEY}"
   APISIX_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_apisix_auth.txt")
   APISIX_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_apisix_auth.txt")
