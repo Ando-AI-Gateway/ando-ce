@@ -21,9 +21,7 @@ COPY . .
 
 # Build release binary with target-cpu=native for maximum SIMD/branch-prediction gains.
 # LTO + codegen-units=1 already set in Cargo.toml [profile.release].
-# --inline-threshold=275 (default 225) — slightly more aggressive inlining on hot paths.
-# -enable-machine-outliner — deduplicates repeated code sequences → smaller binary → better I-cache.
-ENV RUSTFLAGS="-C target-cpu=native -C llvm-args=--inline-threshold=275 -C llvm-args=-enable-machine-outliner"
+ENV RUSTFLAGS="-C target-cpu=native"
 RUN cargo build --release --bin ando
 
 # ==========================================
