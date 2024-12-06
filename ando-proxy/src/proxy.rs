@@ -207,6 +207,7 @@ impl AndoProxy {
         let meta = Arc::new(RouteMetadata {
             has_plugins,
             upstream_addr,
+            service_id: route.service_id.clone(),
         });
         self.route_meta_cache
             .insert(Arc::clone(route_id), Arc::clone(&meta));
@@ -312,11 +313,14 @@ fn instant_sentinel() -> std::time::Instant {
 }
 
 /// Cached route metadata — avoids cloning the full Route struct on every request.
-/// Only holds the fields needed for the hot path decision: does this route have
-/// plugins, and what is its upstream address?
+/// Holds only the fields needed for the hot path and slow path setup, so the
+/// Route itself is never cloned after the first request for a given route.
 struct RouteMetadata {
     has_plugins: bool,
     upstream_addr: Arc<str>,
+    /// Cached service_id from the Route — avoids cloning Route on the slow path
+    /// just to read this field.
+    service_id: Option<String>,
 }
 
 #[async_trait]
@@ -456,12 +460,29 @@ impl ProxyHttp for AndoProxy {
 
         // ──────────────────────────────────────────────────────────────
         // SLOW PATH: plugins present — full context creation
-        // Need the full Route for plugin merging.
+        //
+        // OPTIMISATION: check pipeline cache BEFORE cloning Route.
+        // The full Route is only needed to merge plugins and build the
+        // pipeline (first request per route). After that the pipeline
+        // is cached and we never touch Route again — saving a full
+        // Route clone + merge_plugins() on every subsequent request.
         // ──────────────────────────────────────────────────────────────
-        let route = match self.router.get_route(&route_match.route_id) {
-            Some(r) => r,
-            None => return Ok(true),
+        let pipeline = if let Some(cached) = self.pipeline_cache.get(route_match.route_id.as_ref()) {
+            // Pipeline already built — skip Route clone + merge_plugins entirely
+            Arc::clone(cached.value())
+        } else {
+            // First request for this route: need Route for plugin merging
+            let route = match self.router.get_route(&route_match.route_id) {
+                Some(r) => r,
+                None => return Ok(true),
+            };
+            let merged_plugins = self.merge_plugins(&route);
+            self.get_pipeline(&route_match.route_id, &merged_plugins)
         };
+
+        // Determine if this pipeline has auth plugins (needs consumer injection)
+        let needs_consumers = pipeline.has_auth_plugins();
+
         let method_owned = method.to_string();
         let uri_string = req.uri.to_string();
 
@@ -492,18 +513,9 @@ impl ProxyHttp for AndoProxy {
             plugin_ctx.path_params.insert(k, v);
         }
 
-        plugin_ctx.service_id = route.service_id.clone();
-
-        // Merge plugins from all sources
-        let merged_plugins = self.merge_plugins(&route);
+        plugin_ctx.service_id = meta.service_id.clone();
 
         // Inject consumer snapshot only when auth plugins are present
-        let needs_consumers = merged_plugins.keys().any(|k| {
-            matches!(
-                k.as_str(),
-                "key-auth" | "jwt-auth" | "basic-auth" | "hmac-auth" | "consumer-restriction"
-            )
-        });
         if needs_consumers {
             for entry in self.cache.consumers.iter() {
                 plugin_ctx
@@ -511,8 +523,6 @@ impl ProxyHttp for AndoProxy {
                     .insert(entry.key().clone(), entry.value().clone());
             }
         }
-
-        let pipeline = self.get_pipeline(&route_match.route_id, &merged_plugins);
 
         // Execute pre-proxy phases
         match pipeline.execute_request_phases(&mut plugin_ctx).await {

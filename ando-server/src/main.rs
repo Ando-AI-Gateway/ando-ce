@@ -39,8 +39,15 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Initialize tracing
+    //
+    // Suppress pingora_core::connectors logs — "failed to acquire reusable
+    // stream" errors are benign (handled by error_while_proxy retry logic)
+    // but at high concurrency the JSON serialization + I/O of each log line
+    // burns significant CPU, directly hurting throughput.
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cli.log_level));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(
+            &format!("{},pingora_core::connectors=off", cli.log_level)
+        ));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)

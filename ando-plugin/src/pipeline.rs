@@ -15,12 +15,22 @@ pub struct PluginPipeline {
     phases: HashMap<Phase, Vec<PluginInstance>>,
     /// Bitmask of which phases are populated (1 << phase as u8).
     phase_mask: u8,
+    /// Pre-computed: true if any plugin is an auth plugin that needs consumer injection.
+    has_auth: bool,
 }
 
 impl PluginPipeline {
     /// Build a pipeline from a list of plugin instances.
     pub fn new(mut instances: Vec<PluginInstance>) -> Self {
         let mut phases: HashMap<Phase, Vec<PluginInstance>> = HashMap::new();
+
+        // Pre-compute whether any auth plugins are present
+        let has_auth = instances.iter().any(|i| {
+            matches!(
+                i.plugin.name(),
+                "key-auth" | "jwt-auth" | "basic-auth" | "hmac-auth" | "consumer-restriction"
+            )
+        });
 
         // Sort by priority (higher first)
         instances.sort_by(|a, b| b.plugin.priority().cmp(&a.plugin.priority()));
@@ -42,13 +52,20 @@ impl PluginPipeline {
             phase_mask |= 1 << (*phase as u8);
         }
 
-        Self { phases, phase_mask }
+        Self { phases, phase_mask, has_auth }
     }
 
     /// O(1) check whether this pipeline has any plugins for the given phase.
     #[inline(always)]
     pub fn has_phase(&self, phase: Phase) -> bool {
         self.phase_mask & (1 << (phase as u8)) != 0
+    }
+
+    /// O(1) check whether this pipeline has any auth plugins that require
+    /// consumer injection (key-auth, jwt-auth, basic-auth, etc.).
+    #[inline(always)]
+    pub fn has_auth_plugins(&self) -> bool {
+        self.has_auth
     }
 
     /// Execute all plugins for a given phase.
