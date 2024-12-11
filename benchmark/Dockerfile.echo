@@ -2,15 +2,17 @@
 FROM rust:latest AS builder
 
 WORKDIR /build
-COPY . .
-RUN cargo build --release -p echo-backend
+# Context is workspace root (ando/)
+COPY v1/benchmark/echo-backend/ ./echo-backend/
+WORKDIR /build/echo-backend
+RUN cargo build --release
 
 # ── Runtime ──────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/target/release/echo-backend /usr/local/bin/
+COPY --from=builder /build/echo-backend/target/release/echo-backend /usr/local/bin/
 
 EXPOSE 3000
 ENTRYPOINT ["echo-backend"]

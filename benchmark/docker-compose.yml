@@ -1,7 +1,11 @@
 # ============================================================
-# Ando vs APISIX Benchmark — Docker Compose
+# Ando v1 vs Ando v2 vs APISIX — Unified Benchmark
 # ============================================================
-# Usage: ./benchmark/bench.sh
+# Usage: ./benchmark/bench.sh [baseline|plain|auth|stress|ramp|all]
+#
+# Env overrides:
+#   BENCH_DURATION=60s BENCH_CONNECTIONS=400 ./benchmark/bench.sh
+#
 # Requires: docker (with compose plugin)
 # ============================================================
 
@@ -20,23 +24,41 @@ services:
       retries: 20
       start_period: 5s
 
-  # ── Ando API Gateway ────────────────────────────────────────
-  ando:
+  # ── Ando v1 (Pingora / Tokio) ───────────────────────────────
+  ando-v1:
     build:
-      context: ..
+      context: ../v1
       dockerfile: deploy/docker/Dockerfile
     volumes:
-      - ./ando-bench.yaml:/etc/ando/ando.yaml:ro
+      - ./ando-v1-bench.yaml:/etc/ando/ando.yaml:ro
     networks: [bench]
     depends_on:
       echo:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9180/apisix/admin/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9180/apisix/admin/health || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 20
-      start_period: 10s
+      start_period: 15s
+
+  # ── Ando v2 (monoio / thread-per-core) ──────────────────────
+  ando-v2:
+    build:
+      context: ../v2
+      dockerfile: Dockerfile
+    volumes:
+      - ./ando-v2-bench.yaml:/etc/ando/ando.yaml:ro
+    networks: [bench]
+    depends_on:
+      echo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9180/apisix/admin/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
 
   # ── etcd — APISIX config store ──────────────────────────────
   etcd:
@@ -59,7 +81,7 @@ services:
       retries: 15
       start_period: 5s
 
-  # ── APISIX API Gateway (comparison target) ──────────────────
+  # ── APISIX (comparison target) ──────────────────────────────
   apisix:
     image: apache/apisix:3.15.0-debian
     volumes:

@@ -1,54 +1,118 @@
 # Ando — Enterprise API Gateway
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/kowito/ando/blob/main/LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
+This repository contains two separate versions of the Ando API Gateway:
 
-**Ando** is a high-performance, cloud-native enterprise API gateway built on [Cloudflare Pingora](https://github.com/cloudflare/pingora). It provides feature parity with Apache APISIX while delivering superior performance through Rust's zero-cost abstractions, with a Lua Plugin Development Kit (PDK) powered by LuaJIT for extensibility.
+## Structure
 
-## ✨ Key Features
-
-- **Blazing Fast**: Built on Pingora's async, multithreaded architecture.
-- **Apache APISIX Parity**: Compatible Admin API and Route/Service/Upstream models.
-- **Lua PDK**: Write custom plugins in Lua without sacrificing performance.
-- **Dynamic Config**: Real-time configuration updates via etcd.
-- **Observability**: Built-in support for VictoriaMetrics (metrics) and VictoriaLogs (logging).
-- **Edge Ready**: Minimal footprint, single static binary, and standalone mode support.
-
-## 🚀 Quick Start
-
-Get Ando running in under 2 minutes:
-
-```bash
-# Start the full stack (Ando + etcd + VictoriaMetrics/Logs)
-cd deploy/docker
-docker compose up -d
-
-# Verify
-curl http://localhost:9180/apisix/admin/health
+```
+ando/
+├── benchmark/    # Unified benchmark: Ando v1 vs Ando v2 vs APISIX
+│   ├── bench.sh
+│   ├── docker-compose.yml
+│   ├── ando-v1-bench.yaml
+│   ├── ando-v2-bench.yaml
+│   ├── apisix-config.yaml
+│   ├── Dockerfile.echo
+│   ├── Dockerfile.wrk
+│   └── results/
+│
+├── v1/           # Ando v1 — Pingora/Tokio based
+│   ├── Cargo.toml
+│   ├── ando-core/
+│   ├── ando-proxy/
+│   ├── ando-plugin/
+│   ├── ando-plugins/
+│   ├── ando-store/
+│   ├── ando-observability/
+│   ├── ando-admin/
+│   ├── ando-server/
+│   └── ando-ui/
+│
+├── v2/           # Ando v2 — monoio thread-per-core, zero-overhead
+│   ├── Cargo.toml
+│   ├── ando-core/
+│   ├── ando-proxy/
+│   ├── ando-plugin/
+│   ├── ando-plugins/
+│   ├── ando-store/
+│   ├── ando-observability/
+│   ├── ando-admin/
+│   └── ando-server/
+│
+└── README.md     # This file
 ```
 
-For more detailed instructions, see the [**Quickstart Guide**](./QUICKSTART.md).
+## v1 — Pingora/Tokio
 
-## 🏗️ Architecture
+Built on [Cloudflare Pingora](https://github.com/cloudflare/pingora) + Tokio async runtime.
 
-Ando consists of several core components:
+- Mature, production-tested proxy framework
+- Full plugin ecosystem with Lua/Wasm support
+- Dashboard UI (Next.js)
 
-- **Data Plane (ando-proxy)**: The request handling engine based on Pingora.
-- **Control Plane (ando-admin)**: REST API for managing routes, upstreams, and plugins.
-- **Plugin System (ando-plugin)**: Extensible pipeline supporting Rust and Lua plugins.
-- **Storage (ando-store)**: etcd-backed configuration store with local caching.
+```bash
+cd v1
+cargo build --release
+```
 
-Read more in [**ARCHITECTURE.md**](./ARCHITECTURE.md).
+## v2 — monoio Thread-per-Core
 
-## 🧩 Plugins
+Built on [ByteDance monoio](https://github.com/bytedance/monoio) — io_uring on Linux, kqueue on macOS.
 
-Ando comes with built-in plugins for:
-- **Authentication**: Key-auth, JWT, Basic-auth
-- **Traffic Control**: Rate limiting (count, req)
-- **Transformation**: Request/Response transformer, CORS
-- **Security**: IP restriction
-- **Observability**: Metrics and logging exporters
+**Architecture:**
+- Thread-per-core, shared-nothing data plane
+- Zero cross-core contention (no DashMap, no atomics on hot path)
+- Frozen immutable router swapped via `ArcSwap` (single atomic load per request)
+- Synchronous plugin pipeline (no async overhead for simple plugins)
+- Admin API on separate tokio thread (axum)
+- jemalloc allocator
 
-## 📜 License
+**Target:** Beat APISIX at raw proxy throughput.
 
-This project is licensed under the [Apache-2.0 License](./LICENSE).
+```bash
+cd v2
+cargo build --release
+./target/release/ando-server -c config/ando.yaml
+```
+
+## Benchmark
+
+A unified benchmark runs all three gateways side-by-side in Docker:
+
+```bash
+# Full benchmark (baseline + plain proxy + key-auth + stress + ramp)
+./benchmark/bench.sh
+
+# Single scenario
+./benchmark/bench.sh plain
+
+# Override params
+BENCH_DURATION=60s BENCH_CONNECTIONS=400 ./benchmark/bench.sh all
+```
+
+Results are written to `benchmark/results/<timestamp>/report.md` with Mermaid charts for throughput and p99 latency.
+
+
+
+Both versions expose an APISIX-compatible admin API at `/apisix/admin/*`:
+
+```bash
+# Create a route
+curl -X PUT http://localhost:9180/apisix/admin/routes/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "/api/*",
+    "methods": ["GET", "POST"],
+    "upstream": {
+      "type": "roundrobin",
+      "nodes": {"backend:8080": 1}
+    },
+    "plugins": {
+      "key-auth": {}
+    }
+  }'
+```
+
+## License
+
+Apache-2.0

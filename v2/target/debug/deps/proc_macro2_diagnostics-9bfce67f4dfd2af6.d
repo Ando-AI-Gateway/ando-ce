@@ -1,0 +1,10 @@
+/Users/kowito/Projects/Kowito/ando/ando/v2/target/debug/deps/proc_macro2_diagnostics-9bfce67f4dfd2af6.d: /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/lib.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/ext.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/diagnostic.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/line.rs
+
+/Users/kowito/Projects/Kowito/ando/ando/v2/target/debug/deps/libproc_macro2_diagnostics-9bfce67f4dfd2af6.rlib: /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/lib.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/ext.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/diagnostic.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/line.rs
+
+/Users/kowito/Projects/Kowito/ando/ando/v2/target/debug/deps/libproc_macro2_diagnostics-9bfce67f4dfd2af6.rmeta: /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/lib.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/ext.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/diagnostic.rs /Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/line.rs
+
+/Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/lib.rs:
+/Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/ext.rs:
+/Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/diagnostic.rs:
+/Users/kowito/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-diagnostics-0.10.1/src/line.rs:
