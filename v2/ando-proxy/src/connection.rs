@@ -1,224 +1,232 @@
-use crate::proxy::ProxyWorker;
-use crate::worker::SharedState;
+use crate::proxy::{
+    build_response, build_upstream_request, ConnPool, ProxyWorker, RequestResult, RESP_502,
+};
 use monoio::io::{AsyncReadRent, AsyncWriteRentExt};
 use monoio::net::TcpStream;
+use std::cell::RefCell;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use tracing::debug;
+use std::rc::Rc;
 
-/// Handle a single client connection.
+/// Handle a single client connection (HTTP/1.1 with keepalive).
 ///
-/// v2 design: Each connection is processed directly on the monoio worker
-/// thread — no task scheduling, no future boxing. The HTTP parsing and
-/// proxy logic run inline in the accept loop's async context.
-///
-/// For HTTP/1.1 keepalive connections, we loop over requests.
+/// Shares ProxyWorker and ConnPool with all other connections
+/// on this thread via Rc<RefCell> — zero atomic overhead.
 pub async fn handle_connection(
     mut client: TcpStream,
     peer_addr: SocketAddr,
-    shared: &Arc<SharedState>,
+    proxy: Rc<RefCell<ProxyWorker>>,
+    conn_pool: Rc<RefCell<ConnPool>>,
 ) -> anyhow::Result<()> {
     let client_ip = peer_addr.ip().to_string();
-
-    // Create a thread-local proxy worker for this connection
-    let mut proxy = ProxyWorker::new(
-        shared.router.load_full(),
-        Arc::clone(&shared.plugin_registry),
-        shared.config_cache.clone(),
-        Arc::clone(&shared.config),
-    );
-
-    // Read buffer — reused across keepalive requests
-    let mut buf = vec![0u8; 8192];
+    let mut read_buf = vec![0u8; 8192];
+    // Pre-allocated buffers reused across keepalive requests
+    let mut upstream_req_buf = Vec::with_capacity(2048);
+    let mut resp_buf = Vec::with_capacity(4096);
 
     loop {
-        // Read request data
-        let (res, read_buf) = client.read(buf).await;
-        buf = read_buf;
+        // ── Read request ──
+        let (res, returned_buf) = client.read(read_buf).await;
+        read_buf = returned_buf;
         let n = match res {
-            Ok(0) => return Ok(()), // Connection closed
+            Ok(0) => return Ok(()),
             Ok(n) => n,
             Err(e) => return Err(e.into()),
         };
 
-        // Parse HTTP request
-        let mut headers_buf = [httparse::EMPTY_HEADER; 64];
-        let mut req = httparse::Request::new(&mut headers_buf);
+        // ── Parse HTTP request ──
+        let mut headers_raw = [httparse::EMPTY_HEADER; 64];
+        let mut req = httparse::Request::new(&mut headers_raw);
 
-        match req.parse(&buf[..n]) {
+        match req.parse(&read_buf[..n]) {
             Ok(httparse::Status::Complete(body_offset)) => {
                 let method = req.method.unwrap_or("GET");
                 let path = req.path.unwrap_or("/");
 
-                // Extract headers
-                let headers: Vec<(String, String)> = req
-                    .headers
-                    .iter()
-                    .filter(|h| h.name != httparse::EMPTY_HEADER.name)
-                    .map(|h| {
-                        (
-                            h.name.to_lowercase(),
-                            String::from_utf8_lossy(h.value).to_string(),
-                        )
-                    })
-                    .collect();
+                // Zero-copy header extraction (references into read_buf)
+                let mut headers: Vec<(&str, &str)> = Vec::with_capacity(16);
+                let mut host: Option<&str> = None;
+                let mut keep_alive = true;
 
-                let host = headers
-                    .iter()
-                    .find(|(k, _)| k == "host")
-                    .map(|(_, v)| v.as_str());
-
-                // Check for router updates
-                let current_router = shared.router.load_full();
-                proxy.maybe_update_router(current_router);
-
-                // Execute proxy logic
-                let response = proxy.handle_request(method, path, host, &headers, &client_ip);
-
-                if response.status == 0 {
-                    // Proxy to upstream
-                    if let Some(ref upstream_addr) = response.upstream_addr {
-                        match proxy_to_upstream(
-                            &mut client,
-                            upstream_addr,
-                            method,
-                            path,
-                            &headers,
-                            &buf[body_offset..n],
-                        )
-                        .await
-                        {
-                            Ok(_) => {}
-                            Err(e) => {
-                                let error_resp = format!(
-                                    "HTTP/1.1 502 Bad Gateway\r\ncontent-type: application/json\r\ncontent-length: 42\r\nconnection: keep-alive\r\n\r\n{{\"error\":\"upstream error\",\"status\":502}}"
-                                );
-                                let (res, _) = client.write_all(error_resp.into_bytes()).await;
-                                res?;
-                                debug!(error = %e, "Upstream proxy error");
-                            }
-                        }
+                for h in req.headers.iter() {
+                    if h.name.is_empty() { break; }
+                    let val = std::str::from_utf8(h.value).unwrap_or("");
+                    headers.push((h.name, val));
+                    if h.name.eq_ignore_ascii_case("host") {
+                        host = Some(val);
+                    } else if h.name.eq_ignore_ascii_case("connection") {
+                        keep_alive = !val.eq_ignore_ascii_case("close");
                     }
-                } else {
-                    // Direct response from plugin (e.g., 401, 403, 429)
-                    let body = &response.body;
-                    let mut resp = format!(
-                        "HTTP/1.1 {} {}\r\ncontent-length: {}\r\nconnection: keep-alive\r\n",
-                        response.status,
-                        status_text(response.status),
-                        body.len(),
-                    );
-                    for (k, v) in &response.headers {
-                        resp.push_str(&format!("{}: {}\r\n", k, v));
-                    }
-                    resp.push_str("\r\n");
-
-                    let mut resp_bytes = resp.into_bytes();
-                    resp_bytes.extend_from_slice(body);
-                    let (res, _) = client.write_all(resp_bytes).await;
-                    res?;
                 }
 
-                // Check if connection should be kept alive
-                let keep_alive = headers
-                    .iter()
-                    .find(|(k, _)| k == "connection")
-                    .map(|(_, v)| !v.eq_ignore_ascii_case("close"))
-                    .unwrap_or(true); // HTTP/1.1 default is keep-alive
+                // ── Process request (brief RefCell borrow, NO await) ──
+                let result = {
+                    let mut pw = proxy.borrow_mut();
+                    pw.handle_request(method, path, host, &headers, &client_ip)
+                };
+                // Borrow dropped here — safe to do async I/O
+
+                match result {
+                    RequestResult::Proxy { ref upstream_addr } => {
+                        // Build upstream request while header refs are valid
+                        let body_data = &read_buf[body_offset..n];
+                        build_upstream_request(
+                            &mut upstream_req_buf,
+                            method, path, &headers, body_data,
+                        );
+
+                        // Get or open upstream connection
+                        let maybe_conn = conn_pool.borrow_mut().take(upstream_addr);
+                        let mut upstream = match maybe_conn {
+                            Some(s) => s,
+                            None => match TcpStream::connect(upstream_addr.as_str()).await {
+                                Ok(s) => s,
+                                Err(_) => {
+                                    let (res, _) = client.write_all(RESP_502.to_vec()).await;
+                                    res?;
+                                    if !keep_alive { return Ok(()); }
+                                    continue;
+                                }
+                            },
+                        };
+
+                        // Send request to upstream
+                        let req_data = upstream_req_buf.clone();
+                        let (res, _) = upstream.write_all(req_data).await;
+                        if res.is_err() {
+                            // Pooled conn was stale, retry with new connection
+                            match TcpStream::connect(upstream_addr.as_str()).await {
+                                Ok(mut new_upstream) => {
+                                    let req_data = upstream_req_buf.clone();
+                                    let (res, _) = new_upstream.write_all(req_data).await;
+                                    if res.is_err() {
+                                        let (res, _) = client.write_all(RESP_502.to_vec()).await;
+                                        res?;
+                                        if !keep_alive { return Ok(()); }
+                                        continue;
+                                    }
+                                    upstream = new_upstream;
+                                }
+                                Err(_) => {
+                                    let (res, _) = client.write_all(RESP_502.to_vec()).await;
+                                    res?;
+                                    if !keep_alive { return Ok(()); }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Read upstream response and forward to client
+                        let upstream_buf = vec![0u8; 65536];
+                        let (res, upstream_buf) = upstream.read(upstream_buf).await;
+                        let resp_n = match res {
+                            Ok(0) => {
+                                let (res, _) = client.write_all(RESP_502.to_vec()).await;
+                                res?;
+                                if !keep_alive { return Ok(()); }
+                                continue;
+                            }
+                            Ok(n) => n,
+                            Err(_) => {
+                                let (res, _) = client.write_all(RESP_502.to_vec()).await;
+                                res?;
+                                if !keep_alive { return Ok(()); }
+                                continue;
+                            }
+                        };
+
+                        // Parse upstream response headers for content-length
+                        let mut resp_headers = [httparse::EMPTY_HEADER; 64];
+                        let mut resp = httparse::Response::new(&mut resp_headers);
+                        let mut content_length: Option<usize> = None;
+                        let mut upstream_keepalive = true;
+
+                        if let Ok(httparse::Status::Complete(hdr_len)) = resp.parse(&upstream_buf[..resp_n]) {
+                            for h in resp.headers.iter() {
+                                if h.name.is_empty() { break; }
+                                if h.name.eq_ignore_ascii_case("content-length") {
+                                    content_length = std::str::from_utf8(h.value)
+                                        .ok()
+                                        .and_then(|s| s.parse().ok());
+                                }
+                                if h.name.eq_ignore_ascii_case("connection") {
+                                    let v = std::str::from_utf8(h.value).unwrap_or("");
+                                    upstream_keepalive = !v.eq_ignore_ascii_case("close");
+                                }
+                            }
+
+                            // Forward first chunk to client
+                            let first_chunk = upstream_buf[..resp_n].to_vec();
+                            let (res, _) = client.write_all(first_chunk).await;
+                            res?;
+
+                            // Stream remaining body if needed
+                            if let Some(cl) = content_length {
+                                let body_in_first = resp_n - hdr_len;
+                                let mut remaining = cl.saturating_sub(body_in_first);
+
+                                while remaining > 0 {
+                                    let chunk_size = remaining.min(65536);
+                                    let chunk_buf = vec![0u8; chunk_size];
+                                    let (res, chunk_buf) = upstream.read(chunk_buf).await;
+                                    let cn = match res {
+                                        Ok(0) => break,
+                                        Ok(n) => n,
+                                        Err(_) => break,
+                                    };
+                                    remaining -= cn;
+                                    let mut data = chunk_buf;
+                                    data.truncate(cn);
+                                    let (res, _) = client.write_all(data).await;
+                                    if res.is_err() { return Ok(()); }
+                                }
+                            }
+                        } else {
+                            // Couldn't parse response headers — forward raw
+                            let data = upstream_buf[..resp_n].to_vec();
+                            let (res, _) = client.write_all(data).await;
+                            res?;
+                            upstream_keepalive = false;
+                        }
+
+                        // Return upstream connection to pool if keepalive
+                        if upstream_keepalive {
+                            conn_pool.borrow_mut().put(
+                                upstream_addr.clone(),
+                                upstream,
+                            );
+                        }
+                    }
+
+                    RequestResult::Static(resp_bytes) => {
+                        let (res, _) = client.write_all(resp_bytes.to_vec()).await;
+                        res?;
+                    }
+
+                    RequestResult::PluginResponse { status, ref headers, ref body } => {
+                        build_response(&mut resp_buf, status, headers, body);
+                        let data = resp_buf.clone();
+                        let (res, _) = client.write_all(data).await;
+                        res?;
+                    }
+                }
 
                 if !keep_alive {
                     return Ok(());
                 }
             }
             Ok(httparse::Status::Partial) => {
-                // Need more data — for now, just send 400
                 let resp = b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
                 let (res, _) = client.write_all(resp.to_vec()).await;
                 res?;
                 return Ok(());
             }
             Err(e) => {
-                debug!(error = %e, "HTTP parse error");
+                tracing::debug!(error = %e, "HTTP parse error");
                 let resp = b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
                 let (res, _) = client.write_all(resp.to_vec()).await;
                 res?;
                 return Ok(());
             }
         }
-    }
-}
-
-/// Proxy request to upstream and stream response back to client.
-async fn proxy_to_upstream(
-    client: &mut TcpStream,
-    upstream_addr: &str,
-    method: &str,
-    path: &str,
-    headers: &[(String, String)],
-    body: &[u8],
-) -> anyhow::Result<()> {
-    // Connect to upstream
-    let mut upstream = TcpStream::connect(upstream_addr).await?;
-
-    // Build HTTP request to upstream
-    let mut req = format!("{} {} HTTP/1.1\r\n", method, path);
-    for (k, v) in headers {
-        // Skip hop-by-hop headers
-        if k == "connection" || k == "keep-alive" || k == "transfer-encoding" || k == "upgrade" {
-            continue;
-        }
-        req.push_str(&format!("{}: {}\r\n", k, v));
-    }
-    req.push_str("connection: keep-alive\r\n");
-    if !body.is_empty() {
-        req.push_str(&format!("content-length: {}\r\n", body.len()));
-    }
-    req.push_str("\r\n");
-
-    let mut req_bytes = req.into_bytes();
-    if !body.is_empty() {
-        req_bytes.extend_from_slice(body);
-    }
-
-    // Send to upstream
-    let (res, _) = upstream.write_all(req_bytes).await;
-    res?;
-
-    // Read upstream response and forward to client
-    let resp_buf = vec![0u8; 65536];
-    let (res, resp_buf) = upstream.read(resp_buf).await;
-    let n = res?;
-
-    if n == 0 {
-        return Err(anyhow::anyhow!("Upstream closed connection"));
-    }
-
-    // Forward the response as-is to the client
-    let (res, _) = client.write_all(resp_buf[..n].to_vec()).await;
-    res?;
-
-    Ok(())
-}
-
-/// HTTP status code to reason phrase.
-fn status_text(status: u16) -> &'static str {
-    match status {
-        200 => "OK",
-        201 => "Created",
-        204 => "No Content",
-        301 => "Moved Permanently",
-        302 => "Found",
-        304 => "Not Modified",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        502 => "Bad Gateway",
-        503 => "Service Unavailable",
-        504 => "Gateway Timeout",
-        _ => "Unknown",
     }
 }

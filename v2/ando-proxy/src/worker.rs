@@ -3,14 +3,17 @@ use ando_core::router::Router;
 use ando_plugin::registry::PluginRegistry;
 use ando_store::cache::ConfigCache;
 use arc_swap::ArcSwap;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{error, info};
 
-/// Shared state that all monoio worker threads can read.
+use crate::proxy::{ConnPool, ProxyWorker};
+
+/// Shared state across all worker threads.
 ///
-/// v2 design: The ArcSwap<Router> is the ONLY shared mutable state.
-/// It's updated by the control plane thread and read by worker threads
-/// via a single atomic load (no lock, no CAS, no contention).
+/// The ArcSwap<Router> is the ONLY shared mutable state.
+/// Updated by admin API, read by workers via atomic load.
 pub struct SharedState {
     pub router: Arc<ArcSwap<Router>>,
     pub plugin_registry: Arc<PluginRegistry>,
@@ -52,7 +55,6 @@ pub fn spawn_workers(
         let handle = std::thread::Builder::new()
             .name(format!("ando-worker-{}", worker_id))
             .spawn(move || {
-                // Each thread gets its own monoio runtime
                 let mut rt = monoio::RuntimeBuilder::<monoio::FusionDriver>::new()
                     .enable_all()
                     .build()
@@ -70,39 +72,45 @@ pub fn spawn_workers(
 }
 
 /// Main loop for a single worker thread.
+///
+/// Creates ONE ProxyWorker and ONE ConnPool for this thread.
+/// All connections on this thread share them via Rc<RefCell>.
 async fn worker_loop(worker_id: usize, shared: Arc<SharedState>, addr: String) {
     use monoio::net::TcpListener;
 
-    let listener = TcpListener::bind(&addr).expect(&format!(
-        "Worker {} failed to bind to {}",
-        worker_id, addr
-    ));
+    let listener = TcpListener::bind(&addr).unwrap_or_else(|e| {
+        panic!("Worker {} failed to bind to {}: {}", worker_id, addr, e);
+    });
 
     info!(worker = worker_id, addr = %addr, "Worker listening");
 
-    // Create thread-local proxy worker
-    let mut proxy = crate::proxy::ProxyWorker::new(
+    // ── Create ONCE per thread ──
+    let pool_size = shared.config.proxy.keepalive_pool_size;
+    let proxy = Rc::new(RefCell::new(ProxyWorker::new(
         shared.router.load_full(),
         Arc::clone(&shared.plugin_registry),
         shared.config_cache.clone(),
         Arc::clone(&shared.config),
-    );
+    )));
+    let conn_pool = Rc::new(RefCell::new(ConnPool::new(pool_size)));
 
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
                 // Check for router updates (cheap atomic load)
-                let current_router = shared.router.load_full();
-                proxy.maybe_update_router(current_router);
+                {
+                    let current = shared.router.load_full();
+                    proxy.borrow_mut().maybe_update_router(current);
+                }
 
-                // Handle connection
-                let shared_ref = Arc::clone(&shared);
+                let proxy = Rc::clone(&proxy);
+                let pool = Rc::clone(&conn_pool);
+
                 monoio::spawn(async move {
-                    if let Err(e) =
-                        crate::connection::handle_connection(stream, peer_addr, &shared_ref).await
-                    {
-                        // Connection errors are normal (client disconnect, etc.)
-                        tracing::debug!(error = %e, "Connection error");
+                    if let Err(e) = crate::connection::handle_connection(
+                        stream, peer_addr, proxy, pool,
+                    ).await {
+                        tracing::debug!(error = %e, "Connection closed");
                     }
                 });
             }

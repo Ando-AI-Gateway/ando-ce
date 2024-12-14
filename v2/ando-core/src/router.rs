@@ -1,5 +1,4 @@
 use crate::route::Route;
-use matchit::Match;
 use std::collections::HashMap;
 use tracing::info;
 
@@ -18,12 +17,6 @@ pub struct Router {
     routes: HashMap<String, Route>,
     /// Monotonic version — bumped on every rebuild.
     version: u64,
-}
-
-/// Result of a route match.
-pub struct RouteMatch {
-    pub route_id: String,
-    pub params: Vec<(String, String)>,
 }
 
 impl Router {
@@ -70,32 +63,21 @@ impl Router {
         })
     }
 
-    /// Match a request to a route. Zero allocation on hit.
+    /// Match a request to a route. Returns a reference — zero allocation.
+    ///
+    /// Instead of returning `RouteMatch { route_id, params }` which clones
+    /// the route_id String and allocates a Vec for params on every match,
+    /// this returns `&Route` directly. The caller can access `route.id`
+    /// and other fields without any allocation.
     #[inline]
-    pub fn match_route<'a>(&'a self, method: &str, path: &str, _host: Option<&str>) -> Option<RouteMatch> {
+    pub fn match_route(&self, method: &str, path: &str, host: Option<&str>) -> Option<&Route> {
         // Try method-specific tree first
         if let Some(tree) = self.method_trees.get(method) {
             if let Ok(matched) = tree.at(path) {
-                let route_id = matched.value.clone();
-                // Host filtering
-                if let Some(route) = self.routes.get(&route_id) {
-                    if !route.hosts.is_empty() {
-                        if let Some(host) = _host {
-                            if !route.hosts.iter().any(|h| h == host) {
-                                // Host mismatch — fall through to catch-all
-                            } else {
-                                return Some(RouteMatch {
-                                    route_id,
-                                    params: extract_params(&matched),
-                                });
-                            }
-                        }
-                        // No host header but route requires host — skip
-                    } else {
-                        return Some(RouteMatch {
-                            route_id,
-                            params: extract_params(&matched),
-                        });
+                let route_id = matched.value.as_str();
+                if let Some(route) = self.routes.get(route_id) {
+                    if check_host(route, host) {
+                        return Some(route);
                     }
                 }
             }
@@ -103,25 +85,15 @@ impl Router {
 
         // Try catch-all (any method) tree
         if let Ok(matched) = self.any_tree.at(path) {
-            let route_id = matched.value.clone();
-            if let Some(route) = self.routes.get(&route_id) {
+            let route_id = matched.value.as_str();
+            if let Some(route) = self.routes.get(route_id) {
                 if !route.matches_method(method) {
                     return None;
                 }
-                if !route.hosts.is_empty() {
-                    if let Some(host) = _host {
-                        if !route.hosts.iter().any(|h| h == host) {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
+                if check_host(route, host) {
+                    return Some(route);
                 }
             }
-            return Some(RouteMatch {
-                route_id,
-                params: extract_params(&matched),
-            });
         }
 
         None
@@ -155,6 +127,19 @@ impl Router {
     }
 }
 
+/// Check host filtering. Returns true if the route allows the given host
+/// (or has no host restriction).
+#[inline]
+fn check_host(route: &Route, host: Option<&str>) -> bool {
+    if route.hosts.is_empty() {
+        return true;
+    }
+    match host {
+        Some(h) => route.hosts.iter().any(|rh| rh == h),
+        None => false,
+    }
+}
+
 /// Normalize path for matchit compatibility.
 fn normalize_path(uri: &str) -> String {
     // Convert APISIX wildcard `/*` suffix to matchit `/{*rest}`
@@ -165,15 +150,6 @@ fn normalize_path(uri: &str) -> String {
     } else {
         uri.to_string()
     }
-}
-
-/// Extract path parameters from a matchit match.
-fn extract_params(matched: &Match<'_, '_, &String>) -> Vec<(String, String)> {
-    matched
-        .params
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
 }
 
 #[cfg(test)]
@@ -208,14 +184,14 @@ mod tests {
         ];
         let router = Router::build(routes, 1).unwrap();
 
-        let m = router.match_route("GET", "/api/v1/users", None).unwrap();
-        assert_eq!(m.route_id, "r1");
+        let route = router.match_route("GET", "/api/v1/users", None).unwrap();
+        assert_eq!(route.id, "r1");
 
-        let m = router.match_route("POST", "/api/v1/users", None).unwrap();
-        assert_eq!(m.route_id, "r2");
+        let route = router.match_route("POST", "/api/v1/users", None).unwrap();
+        assert_eq!(route.id, "r2");
 
-        let m = router.match_route("GET", "/health", None).unwrap();
-        assert_eq!(m.route_id, "r3");
+        let route = router.match_route("GET", "/health", None).unwrap();
+        assert_eq!(route.id, "r3");
 
         assert!(router.match_route("GET", "/not/found", None).is_none());
     }
@@ -227,8 +203,8 @@ mod tests {
         ];
         let router = Router::build(routes, 1).unwrap();
 
-        let m = router.match_route("GET", "/api/v1/anything", None).unwrap();
-        assert_eq!(m.route_id, "r1");
+        let route = router.match_route("GET", "/api/v1/anything", None).unwrap();
+        assert_eq!(route.id, "r1");
     }
 
     #[test]
