@@ -11,6 +11,13 @@ use std::rc::Rc;
 ///
 /// Shares ProxyWorker and ConnPool with all other connections
 /// on this thread via Rc<RefCell> — zero atomic overhead.
+///
+/// Optimizations:
+///   - All buffers allocated ONCE, reused across keepalive requests
+///   - Zero-copy header parsing (httparse &str refs into read buffer)
+///   - TCP_NODELAY on new upstream connections
+///   - Connection pool with stale-retry
+///   - Upstream response streaming for large bodies
 pub async fn handle_connection(
     mut client: TcpStream,
     peer_addr: SocketAddr,
@@ -18,10 +25,12 @@ pub async fn handle_connection(
     conn_pool: Rc<RefCell<ConnPool>>,
 ) -> anyhow::Result<()> {
     let client_ip = peer_addr.ip().to_string();
+
+    // ── All buffers allocated ONCE, reused across keepalive requests ──
     let mut read_buf = vec![0u8; 8192];
-    // Pre-allocated buffers reused across keepalive requests
     let mut upstream_req_buf = Vec::with_capacity(2048);
     let mut resp_buf = Vec::with_capacity(4096);
+    let mut upstream_buf = vec![0u8; 65536];
 
     loop {
         // ── Read request ──
@@ -79,7 +88,10 @@ pub async fn handle_connection(
                         let mut upstream = match maybe_conn {
                             Some(s) => s,
                             None => match TcpStream::connect(upstream_addr.as_str()).await {
-                                Ok(s) => s,
+                                Ok(s) => {
+                                    let _ = s.set_nodelay(true);
+                                    s
+                                }
                                 Err(_) => {
                                     let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                     res?;
@@ -96,6 +108,7 @@ pub async fn handle_connection(
                             // Pooled conn was stale, retry with new connection
                             match TcpStream::connect(upstream_addr.as_str()).await {
                                 Ok(mut new_upstream) => {
+                                    let _ = new_upstream.set_nodelay(true);
                                     let req_data = upstream_req_buf.clone();
                                     let (res, _) = new_upstream.write_all(req_data).await;
                                     if res.is_err() {
@@ -115,9 +128,9 @@ pub async fn handle_connection(
                             }
                         }
 
-                        // Read upstream response and forward to client
-                        let upstream_buf = vec![0u8; 65536];
-                        let (res, upstream_buf) = upstream.read(upstream_buf).await;
+                        // Read upstream response — reuse buffer across keepalive
+                        let (res, returned_ubuf) = upstream.read(upstream_buf).await;
+                        upstream_buf = returned_ubuf;
                         let resp_n = match res {
                             Ok(0) => {
                                 let (res, _) = client.write_all(RESP_502.to_vec()).await;
@@ -166,16 +179,16 @@ pub async fn handle_connection(
 
                                 while remaining > 0 {
                                     let chunk_size = remaining.min(65536);
-                                    let chunk_buf = vec![0u8; chunk_size];
-                                    let (res, chunk_buf) = upstream.read(chunk_buf).await;
+                                    let mut chunk_buf = vec![0u8; chunk_size];
+                                    let (res, returned_chunk) = upstream.read(chunk_buf).await;
+                                    chunk_buf = returned_chunk;
                                     let cn = match res {
                                         Ok(0) => break,
                                         Ok(n) => n,
                                         Err(_) => break,
                                     };
                                     remaining -= cn;
-                                    let mut data = chunk_buf;
-                                    data.truncate(cn);
+                                    let data = chunk_buf[..cn].to_vec();
                                     let (res, _) = client.write_all(data).await;
                                     if res.is_err() { return Ok(()); }
                                 }

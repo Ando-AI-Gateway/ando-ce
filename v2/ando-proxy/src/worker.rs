@@ -75,6 +75,8 @@ pub fn spawn_workers(
 ///
 /// Creates ONE ProxyWorker and ONE ConnPool for this thread.
 /// All connections on this thread share them via Rc<RefCell>.
+///
+/// Pool is pre-warmed before accepting any traffic.
 async fn worker_loop(worker_id: usize, shared: Arc<SharedState>, addr: String) {
     use monoio::net::TcpListener;
 
@@ -86,17 +88,28 @@ async fn worker_loop(worker_id: usize, shared: Arc<SharedState>, addr: String) {
 
     // ── Create ONCE per thread ──
     let pool_size = shared.config.proxy.keepalive_pool_size;
-    let proxy = Rc::new(RefCell::new(ProxyWorker::new(
+    let proxy_inner = ProxyWorker::new(
         shared.router.load_full(),
         Arc::clone(&shared.plugin_registry),
         shared.config_cache.clone(),
         Arc::clone(&shared.config),
-    )));
-    let conn_pool = Rc::new(RefCell::new(ConnPool::new(pool_size)));
+    );
+
+    // ── Pre-warm connection pool ──
+    let upstream_addrs = proxy_inner.upstream_addresses();
+    let mut pool_inner = ConnPool::new(pool_size);
+    let warm_count = (pool_size / 2).max(8).min(pool_size); // warm half the pool
+    pool_inner.warm(&upstream_addrs, warm_count).await;
+
+    let proxy = Rc::new(RefCell::new(proxy_inner));
+    let conn_pool = Rc::new(RefCell::new(pool_inner));
 
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                // TCP_NODELAY — disable Nagle's for lowest latency
+                let _ = stream.set_nodelay(true);
+
                 // Check for router updates (cheap atomic load)
                 {
                     let current = shared.router.load_full();

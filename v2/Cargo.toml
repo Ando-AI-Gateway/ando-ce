@@ -98,7 +98,7 @@ crossbeam-channel = "0.5"
 regex = "1"
 
 [profile.release]
-lto = true
+lto = "fat"
 codegen-units = 1
 opt-level = 3
 strip = true

@@ -25,7 +25,8 @@ COPY ando-observability/ ando-observability/
 COPY ando-admin/ ando-admin/
 COPY ando-server/ ando-server/
 
-# Build in release mode
+# Build in release mode — target-cpu=native for max codegen optimization
+ENV RUSTFLAGS="-C target-cpu=native"
 RUN cargo build --release --bin ando-server
 
 # ── Runtime image ──

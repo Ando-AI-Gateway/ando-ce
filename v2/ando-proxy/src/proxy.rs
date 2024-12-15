@@ -100,6 +100,29 @@ impl ProxyWorker {
         }
     }
 
+    /// Collect all unique upstream addresses from config (for pool pre-warming).
+    pub fn upstream_addresses(&self) -> Vec<String> {
+        let mut addrs = Vec::new();
+        for ups in self.upstreams.values() {
+            for addr in ups.nodes.keys() {
+                if !addrs.contains(addr) {
+                    addrs.push(addr.clone());
+                }
+            }
+        }
+        // Also check routes with inline upstreams
+        for route in self.router.routes().values() {
+            if let Some(ref ups) = route.upstream {
+                for addr in ups.nodes.keys() {
+                    if !addrs.contains(addr) {
+                        addrs.push(addr.clone());
+                    }
+                }
+            }
+        }
+        addrs
+    }
+
     /// Hot path: process request. Returns what to do next.
     ///
     /// Takes &str header references (zero-copy from read buffer).
@@ -281,7 +304,10 @@ pub enum RequestResult {
 // ── Connection pool ───────────────────────────────────────────
 
 /// Thread-local upstream connection pool.
-/// Avoids TCP handshake on every request (saves ~1ms RTT).
+/// Avoids TCP handshake on every request (saves ~0.5-2ms RTT).
+///
+/// Pre-warmed at startup: each worker opens N connections to every
+/// known upstream before accepting any traffic.
 pub struct ConnPool {
     pools: HashMap<String, VecDeque<TcpStream>>,
     max_idle: usize,
@@ -290,19 +316,47 @@ pub struct ConnPool {
 impl ConnPool {
     pub fn new(max_idle_per_host: usize) -> Self {
         Self {
-            pools: HashMap::new(),
+            pools: HashMap::with_capacity(16),
             max_idle: max_idle_per_host,
         }
     }
 
+    #[inline]
     pub fn take(&mut self, addr: &str) -> Option<TcpStream> {
         self.pools.get_mut(addr).and_then(|q| q.pop_front())
     }
 
+    #[inline]
     pub fn put(&mut self, addr: String, stream: TcpStream) {
-        let queue = self.pools.entry(addr).or_insert_with(VecDeque::new);
+        let queue = self.pools.entry(addr).or_insert_with(|| VecDeque::with_capacity(self.max_idle));
         if queue.len() < self.max_idle {
             queue.push_back(stream);
+        }
+        // else: drop stream (closes fd)
+    }
+
+    /// Pre-warm connection pool: open `count` connections to each addr.
+    /// Called once at worker startup, before accepting any traffic.
+    pub async fn warm(&mut self, addrs: &[String], count: usize) {
+        for addr in addrs {
+            let target = count.min(self.max_idle);
+            let queue = self.pools.entry(addr.clone()).or_insert_with(|| VecDeque::with_capacity(target));
+            for _ in 0..target {
+                match TcpStream::connect(addr.as_str()).await {
+                    Ok(stream) => {
+                        // Set TCP_NODELAY on pooled connections
+                        let _ = stream.set_nodelay(true);
+                        queue.push_back(stream);
+                    }
+                    Err(e) => {
+                        tracing::warn!(addr = %addr, error = %e, "Pool pre-warm connect failed");
+                        break; // upstream not yet up — stop trying this addr
+                    }
+                }
+            }
+            if !queue.is_empty() {
+                tracing::info!(addr = %addr, conns = queue.len(), "Pool pre-warmed");
+            }
         }
     }
 }
