@@ -1,7 +1,7 @@
 {
   "name": "Bench Auth",
   "api_id": "bench-auth",
-  "org_id": "default",
+  "org_id": "",
   "use_keyless": false,
   "definition": {
     "location": "header",

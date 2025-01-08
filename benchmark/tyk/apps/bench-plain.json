@@ -1,7 +1,7 @@
 {
   "name": "Bench Plain",
   "api_id": "bench-plain",
-  "org_id": "default",
+  "org_id": "",
   "use_keyless": true,
   "definition": {
     "location": "header",

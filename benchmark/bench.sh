@@ -80,7 +80,21 @@ build_wrk() {
 start_services() {
   header "Starting services (first build may take several minutes)"
   docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d --build --wait
-  ok "All services healthy"
+  ok "All services with healthchecks are healthy"
+
+  # Tyk is distroless (no in-container curl); poll it externally.
+  info "Waiting for Tyk Gateway to be ready..."
+  local tries=0
+  until docker run --rm --network "${BENCH_NET}" curlimages/curl:latest \
+      -sf http://tyk:8080/hello >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    if [ $tries -ge 30 ]; then
+      err "Tyk Gateway did not become ready after 60s"
+      exit 1
+    fi
+    sleep 2
+  done
+  ok "Tyk Gateway ready"
 }
 
 # ── Docker curl helper ────────────────────────────────────────
@@ -200,7 +214,7 @@ setup_routes() {
     -H "Content-Type: application/json" \
     -d '{
       "alias": "bench-user",
-      "org_id": "default",
+      "org_id": "",
       "access_rights": {
         "bench-auth": {
           "api_id": "bench-auth",
