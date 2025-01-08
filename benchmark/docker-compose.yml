@@ -173,7 +173,7 @@ services:
       echo:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/hello > /dev/null 2>&1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/hello || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 30
