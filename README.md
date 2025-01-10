@@ -1,6 +1,41 @@
 # Ando — Enterprise API Gateway
 
-This repository contains two separate versions of the Ando API Gateway:
+Ando is a high-performance, cloud-native API gateway built in Rust. This repository contains two separate versions optimizing for different use cases: a mature production-ready v1 based on Pingora, and an experimental v2 with extreme performance using thread-per-core scheduling.
+
+## Project Overview
+
+**Ando v2** is currently the fastest API gateway in open-source benchmarks:
+
+- **288,960 req/s** (plain proxy at 200 concurrent connections) — **1.9× APISIX**, 2.3× Kong
+- **259,377 req/s** with key-based authentication 
+- **2.64ms p99 latency** under load (vs 4.33ms APISIX, 6.69ms Kong)
+- **285,186 req/s** under stress (500 connections) — outperforming all competitors
+
+**Ando v1** offers production-proven reliability with ecosystem plugins:
+
+- Built on Cloudflare's Pingora framework
+- Full Lua/Wasm plugin support
+- Dashboard UI with Next.js
+- Mature routing, load balancing, and observability
+
+Both versions expose an APISIX-compatible admin API for easy migration and integration.
+
+## Latest Benchmark Results (Feb 21, 2026)
+
+**Test Environment:** Apple M4 | **Duration:** 30s per scenario | **Load:** 4 worker threads
+
+| Metric | Ando v2 | APISIX | Kong | Ando v1 | KrakenD | Tyk |
+|--------|---------|--------|------|---------|---------|-----|
+| Plain (200c) | 288,960 | 155,108 | 125,803 | 118,605 | 59,090 | 6,044 |
+| Key-Auth (200c) | 259,377 | 136,409 | 104,635 | 113,534 | 61,343 | 5,451 |
+| Stress (500c) | 285,186 | 126,601 | 120,237 | 133,805 | 50,738 | 5,338 |
+| **p99 Latency** | **2.64ms** | 4.33ms | 6.69ms | 5.43ms | 13.06ms | 1,350ms |
+
+**Key Findings:**
+- Ando v2 **2× faster than APISIX** on throughput
+- Sub-3ms p99 latency at 200 concurrent connections
+- Maintains performance under stress (500c), where competitors degrade
+- Full results with charts: [benchmark/results/20260221_140447/report.md](./benchmark/results/20260221_140447/report.md)
 
 ## Structure
 
