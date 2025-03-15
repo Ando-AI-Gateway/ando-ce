@@ -16,9 +16,13 @@ use ando_proxy::worker::{self, SharedState};
 use ando_store::cache::ConfigCache;
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::info;
+
+/// Global shutdown flag — checked by signal handler.
+static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Parser, Debug)]
 #[command(name = "ando", version, about = "Ando v2 — Zero-Overhead API Gateway")]
@@ -44,10 +48,14 @@ fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    info!("Ando v2 starting — monoio thread-per-core engine");
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "Ando v2 starting — monoio thread-per-core engine"
+    );
 
     // ── Config ──
     let config = if cli.config.exists() {
+        info!(path = %cli.config.display(), "Loading config file");
         GatewayConfig::load(&cli.config)?
     } else {
         info!("No config file found, using defaults");
@@ -101,18 +109,47 @@ fn main() -> anyhow::Result<()> {
             })
             .expect("Failed to spawn admin thread");
 
-        info!("Admin API started");
+        info!(addr = %config.admin.addr, "Admin API started");
     }
 
     // ── Spawn monoio worker threads ──
-    let worker_handles = worker::spawn_workers(shared, num_workers);
+    let worker_handles = worker::spawn_workers(Arc::clone(&shared), num_workers);
 
-    info!("Ando v2 is ready — {} workers serving traffic", num_workers);
+    info!(
+        workers = num_workers,
+        proxy_addr = %config.proxy.http_addr,
+        admin_addr = %config.admin.addr,
+        "Ando v2 is ready — serving traffic"
+    );
 
-    // ── Wait for all workers (blocks forever) ──
-    for handle in worker_handles {
-        handle.join().expect("Worker thread panicked");
+    // ── Graceful shutdown: wait for SIGTERM/SIGINT ──
+    setup_signal_handler();
+
+    // Wait for shutdown signal
+    while !SHUTDOWN.load(Ordering::Relaxed) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
+    info!("Shutdown signal received, stopping...");
+
+    // In the current architecture, workers run in an infinite accept loop.
+    // On process exit, all threads are cleaned up by the OS.
+    // Future improvement: send shutdown notification to each worker.
+    drop(worker_handles);
+
+    info!("Ando v2 stopped");
     Ok(())
+}
+
+fn setup_signal_handler() {
+    // SIGTERM (docker stop) + SIGINT (Ctrl+C)
+    for sig in [libc::SIGTERM, libc::SIGINT] {
+        unsafe {
+            libc::signal(sig, signal_handler as libc::sighandler_t);
+        }
+    }
+}
+
+extern "C" fn signal_handler(_sig: libc::c_int) {
+    SHUTDOWN.store(true, Ordering::Relaxed);
 }

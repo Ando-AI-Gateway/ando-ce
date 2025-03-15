@@ -18,6 +18,8 @@
 # Environment
 .env
 .env.*
+!.env.example
+!*/.env.example
 
 # Benchmark run artifacts
 benchmark/results/

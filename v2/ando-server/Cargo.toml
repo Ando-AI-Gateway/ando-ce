@@ -27,3 +27,4 @@ clap = { workspace = true }
 tikv-jemallocator = { workspace = true }
 arc-swap = { workspace = true }
 crossbeam-channel = { workspace = true }
+libc = { workspace = true }

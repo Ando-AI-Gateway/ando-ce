@@ -9,7 +9,7 @@ proxy:
   connect_timeout_ms: 2000
   read_timeout_ms: 5000
   write_timeout_ms: 5000
-  keepalive_pool_size: 64
+  keepalive_pool_size: 256
 
 admin:
   addr: "0.0.0.0:9180"

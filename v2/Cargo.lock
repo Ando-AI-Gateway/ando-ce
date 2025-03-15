@@ -145,6 +145,7 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "figment",
+ "libc",
  "monoio",
  "serde",
  "serde_json",

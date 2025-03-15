@@ -75,6 +75,9 @@ arc-swap = "1"
 # ── Fast integer formatting ──
 itoa = "1"
 
+# ── libc (signal handling) ──
+libc = "0.2"
+
 # ── Prometheus metrics ──
 prometheus = { version = "0.13", features = ["process"] }
 
