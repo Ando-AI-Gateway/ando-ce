@@ -1,0 +1,28 @@
+[package]
+name = "ando-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Config storage for Ando gateway"
+
+[features]
+default = []
+etcd = ["dep:etcd-client", "dep:tokio", "dep:crossbeam-channel"]
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+uuid = { workspace = true }
+
+# Enterprise: etcd support (feature-gated)
+etcd-client = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+crossbeam-channel = { workspace = true, optional = true }

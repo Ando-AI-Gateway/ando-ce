@@ -1,135 +1,103 @@
-# Ando — Enterprise API Gateway
+# Ando — High-Performance API Gateway
 
-Ando is a high-performance, cloud-native API gateway built in Rust. This repository contains two separate versions optimizing for different use cases: a mature production-ready v1 based on Pingora, and an experimental v2 with extreme performance using thread-per-core scheduling.
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://www.rust-lang.org)
 
-## Project Overview
+Ando is an open-source, high-performance API gateway built in Rust with a **monoio thread-per-core** architecture. It delivers near-native proxy performance by eliminating async overhead and cross-core contention.
 
-**Ando v2** is currently the fastest API gateway in open-source benchmarks:
+## Performance
 
-- **288,960 req/s** (plain proxy at 200 concurrent connections) — **1.9× APISIX**, 2.3× Kong
-- **259,377 req/s** with key-based authentication 
-- **2.64ms p99 latency** under load (vs 4.33ms APISIX, 6.69ms Kong)
-- **285,186 req/s** under stress (500 connections) — outperforming all competitors
+| Metric | Ando | APISIX | Kong |
+|--------|------|--------|------|
+| Plain Proxy (200c) | **288,960 req/s** | 155,108 | 125,803 |
+| Key-Auth (200c) | **259,377 req/s** | 136,409 | 104,635 |
+| Stress (500c) | **285,186 req/s** | 126,601 | 120,237 |
+| **p99 Latency** | **2.64ms** | 4.33ms | 6.69ms |
 
-**Ando v1** offers production-proven reliability with ecosystem plugins:
+**2x the throughput of APISIX, sub-3ms p99 latency.**
 
-- Built on Cloudflare's Pingora framework
-- Full Lua/Wasm plugin support
-- Dashboard UI with Next.js
-- Mature routing, load balancing, and observability
-
-Both versions expose an APISIX-compatible admin API for easy migration and integration.
-
-## Latest Benchmark Results (Feb 21, 2026)
-
-**Test Environment:** Apple M4 | **Duration:** 30s per scenario | **Load:** 4 worker threads
-
-| Metric | Ando v2 | APISIX | Kong | Ando v1 | KrakenD | Tyk |
-|--------|---------|--------|------|---------|---------|-----|
-| Plain (200c) | 288,960 | 155,108 | 125,803 | 118,605 | 59,090 | 6,044 |
-| Key-Auth (200c) | 259,377 | 136,409 | 104,635 | 113,534 | 61,343 | 5,451 |
-| Stress (500c) | 285,186 | 126,601 | 120,237 | 133,805 | 50,738 | 5,338 |
-| **p99 Latency** | **2.64ms** | 4.33ms | 6.69ms | 5.43ms | 13.06ms | 1,350ms |
-
-**Key Findings:**
-- Ando v2 **2× faster than APISIX** on throughput
-- Sub-3ms p99 latency at 200 concurrent connections
-- Maintains performance under stress (500c), where competitors degrade
-- Full results with charts: [benchmark/results/20260221_140447/report.md](./benchmark/results/20260221_140447/report.md)
-
-## Structure
+## Architecture
 
 ```
-ando/
-├── benchmark/    # Unified benchmark: Ando v1 vs Ando v2 vs APISIX
-│   ├── bench.sh
-│   ├── docker-compose.yml
-│   ├── ando-v1-bench.yaml
-│   ├── ando-v2-bench.yaml
-│   ├── apisix-config.yaml
-│   ├── Dockerfile.echo
-│   ├── Dockerfile.wrk
-│   └── results/
-│
-├── v1/           # Ando v1 — Pingora/Tokio based
-│   ├── Cargo.toml
-│   ├── ando-core/
-│   ├── ando-proxy/
-│   ├── ando-plugin/
-│   ├── ando-plugins/
-│   ├── ando-store/
-│   ├── ando-observability/
-│   ├── ando-admin/
-│   ├── ando-server/
-│   └── ando-ui/
-│
-├── v2/           # Ando v2 — monoio thread-per-core, zero-overhead
-│   ├── Cargo.toml
-│   ├── ando-core/
-│   ├── ando-proxy/
-│   ├── ando-plugin/
-│   ├── ando-plugins/
-│   ├── ando-store/
-│   ├── ando-observability/
-│   ├── ando-admin/
-│   └── ando-server/
-│
-└── README.md     # This file
+┌─────────────────────────────────────────────────┐
+│                    Clients                       │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│              Ando Gateway                        │
+│                                                  │
+│  ┌──────────────────────────────────────────┐   │
+│  │  Data Plane (monoio thread-per-core)      │   │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐    │   │
+│  │  │Worker 0 │ │Worker 1 │ │Worker N │    │   │
+│  │  │ Router  │ │ Router  │ │ Router  │    │   │
+│  │  │ Plugins │ │ Plugins │ │ Plugins │    │   │
+│  │  │ConnPool │ │ConnPool │ │ConnPool │    │   │
+│  │  └─────────┘ └─────────┘ └─────────┘    │   │
+│  └──────────────────────────────────────────┘   │
+│                                                  │
+│  ┌──────────────────────────────────────────┐   │
+│  │  Control Plane (axum/tokio)               │   │
+│  │  Admin API · Config Management            │   │
+│  └──────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────┘
 ```
 
-## v1 — Pingora/Tokio
+- **Thread-per-core**: Each CPU core runs a dedicated OS thread with its own monoio async runtime
+- **Shared-nothing**: Workers operate on thread-local state — no locks, no DashMap on hot path
+- **Zero-copy**: httparse zero-copy header parsing, pooled keepalive connections
+- **Immutable router**: Radix trie built once, swapped atomically via `ArcSwap` (single atomic load per request)
+- **jemalloc**: Optimized memory allocation with background threads
 
-Built on [Cloudflare Pingora](https://github.com/cloudflare/pingora) + Tokio async runtime.
+## Quick Start
 
-- Mature, production-tested proxy framework
-- Full plugin ecosystem with Lua/Wasm support
-- Dashboard UI (Next.js)
-
+### From Source
 ```bash
-cd v1
 cargo build --release
+./target/release/ando-server --config config/ando.yaml
 ```
 
-## v2 — monoio Thread-per-Core
-
-Built on [ByteDance monoio](https://github.com/bytedance/monoio) — io_uring on Linux, kqueue on macOS.
-
-**Architecture:**
-- Thread-per-core, shared-nothing data plane
-- Zero cross-core contention (no DashMap, no atomics on hot path)
-- Frozen immutable router swapped via `ArcSwap` (single atomic load per request)
-- Synchronous plugin pipeline (no async overhead for simple plugins)
-- Admin API on separate tokio thread (axum)
-- jemalloc allocator
-
-**Target:** Beat APISIX at raw proxy throughput.
-
+### Docker
 ```bash
-cd v2
-cargo build --release
-./target/release/ando-server -c config/ando.yaml
+docker build -t ando:latest .
+docker run -p 9080:9080 -p 9180:9180 ando:latest
 ```
 
-## Benchmark
-
-A unified benchmark runs all three gateways side-by-side in Docker:
-
+### Docker Compose
 ```bash
-# Full benchmark (baseline + plain proxy + key-auth + stress + ramp)
-./benchmark/bench.sh
-
-# Single scenario
-./benchmark/bench.sh plain
-
-# Override params
-BENCH_DURATION=60s BENCH_CONNECTIONS=400 ./benchmark/bench.sh all
+docker compose up -d
 ```
 
-Results are written to `benchmark/results/<timestamp>/report.md` with Mermaid charts for throughput and p99 latency.
+## Configuration
 
+See [config/ando.yaml](config/ando.yaml):
 
+```yaml
+proxy:
+  http_addr: "0.0.0.0:9080"
+  workers: 0              # 0 = auto-detect (one per CPU core)
 
-Both versions expose an APISIX-compatible admin API at `/apisix/admin/*`:
+admin:
+  addr: "0.0.0.0:9180"
+  enabled: true
+
+deployment:
+  mode: standalone        # standalone | etcd
+
+observability:
+  prometheus:
+    enabled: false
+    path: "/metrics"
+```
+
+All settings can be overridden via `ANDO_*` environment variables:
+```bash
+ANDO_PROXY_WORKERS=4 ANDO_ADMIN_ENABLED=true ./ando-server
+```
+
+## Admin API
+
+APISIX-compatible REST API for dynamic configuration:
 
 ```bash
 # Create a route
@@ -137,17 +105,119 @@ curl -X PUT http://localhost:9180/apisix/admin/routes/1 \
   -H "Content-Type: application/json" \
   -d '{
     "uri": "/api/*",
-    "methods": ["GET", "POST"],
+    "upstream": {
+      "type": "roundrobin",
+      "nodes": {"backend:8080": 1}
+    }
+  }'
+
+# Add route with authentication
+curl -X PUT http://localhost:9180/apisix/admin/routes/2 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uri": "/secure/*",
     "upstream": {
       "type": "roundrobin",
       "nodes": {"backend:8080": 1}
     },
     "plugins": {
-      "key-auth": {}
+      "key-auth": {},
+      "rate-limiting": {"rate": 100}
+    }
+  }'
+
+# Create a consumer with API key
+curl -X PUT http://localhost:9180/apisix/admin/consumers/myapp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "myapp",
+    "plugins": {
+      "key-auth": {"key": "my-secret-key"}
     }
   }'
 ```
 
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/apisix/admin/routes/{id}` | Create/update route |
+| `GET` | `/apisix/admin/routes/{id}` | Get route |
+| `DELETE` | `/apisix/admin/routes/{id}` | Delete route |
+| `GET` | `/apisix/admin/routes` | List routes |
+| `PUT` | `/apisix/admin/upstreams/{id}` | Create/update upstream |
+| `GET` | `/apisix/admin/upstreams` | List upstreams |
+| `PUT` | `/apisix/admin/consumers/{username}` | Create/update consumer |
+| `GET` | `/apisix/admin/consumers` | List consumers |
+| `GET` | `/apisix/admin/plugins/list` | List plugins |
+| `GET` | `/apisix/admin/health` | Health check |
+
+## Plugins
+
+### Community Edition (included)
+
+| Plugin | Type | Description |
+|--------|------|-------------|
+| `key-auth` | Authentication | API key authentication via header |
+| `jwt-auth` | Authentication | JWT token validation (Bearer) |
+| `basic-auth` | Authentication | HTTP Basic authentication |
+| `ip-restriction` | Traffic Control | IP allow/deny lists (CIDR) |
+| `rate-limiting` | Traffic Control | Local in-memory rate limiting |
+| `cors` | Transform | Cross-Origin Resource Sharing |
+
+### Enterprise Edition
+
+For advanced features, see [Ando Enterprise](https://andogate.dev/enterprise):
+- `hmac-auth` — HMAC request signing
+- `oauth2` — OAuth 2.0 authentication
+- `rate-limiting-advanced` — Distributed rate limiting (Redis)
+- `traffic-mirror` — Request mirroring
+- `canary-release` — Canary deployments
+- `circuit-breaker` — Circuit breaker pattern
+- etcd clustering & config hot-reload
+- VictoriaMetrics/VictoriaLogs push
+- OpenTelemetry distributed tracing
+- Admin API authentication & RBAC
+- Dashboard UI
+- Multi-node deployment
+
+## Crates
+
+| Crate | Purpose |
+|-------|---------|
+| `ando-core` | Core types, config (Figment YAML+env), radix-trie router |
+| `ando-proxy` | monoio thread-per-core data plane, connection pooling |
+| `ando-plugin` | Plugin trait system, pipeline, registry |
+| `ando-plugins` | Built-in CE plugins |
+| `ando-store` | In-memory config cache (DashMap), optional etcd backend |
+| `ando-observability` | Prometheus metrics, access logs |
+| `ando-admin` | APISIX-compatible admin REST API (axum) |
+| `ando-server` | Main binary, startup orchestration |
+
+## Building with Enterprise Features
+
+etcd and VictoriaMetrics support are available via Cargo features:
+
+```bash
+# CE default (standalone, prometheus scrape)
+cargo build --release
+
+# With etcd clustering
+cargo build --release --features ando-store/etcd
+
+# With VictoriaMetrics/Logs push
+cargo build --release --features ando-observability/victoria
+
+# All features
+cargo build --release --features ando-store/etcd,ando-observability/victoria
+```
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## License
 
-Apache-2.0
+Licensed under the [Apache License 2.0](LICENSE).
+
+Copyright 2026 Ando Gateway Authors.

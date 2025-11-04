@@ -1,0 +1,30 @@
+[package]
+name = "ando-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Main binary for Ando gateway"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+ando-proxy = { path = "../ando-proxy" }
+ando-plugin = { path = "../ando-plugin" }
+ando-plugins = { path = "../ando-plugins" }
+ando-store = { path = "../ando-store" }
+ando-observability = { path = "../ando-observability" }
+ando-admin = { path = "../ando-admin" }
+
+monoio = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+figment = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tikv-jemallocator = { workspace = true }
+arc-swap = { workspace = true }
+crossbeam-channel = { workspace = true }
+libc = { workspace = true }

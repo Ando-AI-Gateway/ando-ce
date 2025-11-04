@@ -1,0 +1,28 @@
+[package]
+name = "ando-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Metrics & logging for Ando gateway"
+
+[features]
+default = ["prometheus"]
+prometheus = ["dep:prometheus"]
+victoria = ["dep:reqwest", "dep:tokio", "dep:chrono"]
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+itoa = { workspace = true }
+
+# CE: Prometheus scrape metrics
+prometheus = { workspace = true, optional = true }
+
+# Enterprise: VictoriaMetrics/VictoriaLogs push
+reqwest = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }

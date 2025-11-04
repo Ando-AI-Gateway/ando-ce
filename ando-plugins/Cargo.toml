@@ -1,0 +1,22 @@
+[package]
+name = "ando-plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Built-in plugins for Ando gateway"
+
+[dependencies]
+ando-core = { path = "../ando-core" }
+ando-plugin = { path = "../ando-plugin" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+jsonwebtoken = { workspace = true }
+bcrypt = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+ipnet = { workspace = true }
+regex = { workspace = true }

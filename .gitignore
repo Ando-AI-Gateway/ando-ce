@@ -1,7 +1,5 @@
 # Rust artifacts
 /target
-/v1/target
-/v2/target
 
 # IDEs
 .idea
@@ -19,9 +17,9 @@
 .env
 .env.*
 !.env.example
+!.env.example
 !*/.env.example
 
 # Benchmark run artifacts
 benchmark/results/
 benchmark/ando-native.log
-v1/benchmark/results/
