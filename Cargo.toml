@@ -61,6 +61,7 @@ jsonwebtoken = "9"
 bcrypt = "0.16"
 hmac = "0.12"
 sha2 = "0.10"
+base64 = "0.22"
 
 # ── IP matching ──
 ipnet = "2"

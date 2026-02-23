@@ -1,0 +1,194 @@
+use ando_plugin::plugin::{Phase, Plugin, PluginContext, PluginInstance, PluginResult};
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Rate-limiting plugin — fixed window counter per client IP.
+pub struct RateLimitingPlugin;
+
+#[derive(Debug, Deserialize)]
+struct RateLimitingConfig {
+    /// Maximum requests allowed in the window.
+    count: u64,
+    /// Window size in seconds.
+    time_window: u64,
+}
+
+struct WindowState {
+    count: u64,
+    window_start: Instant,
+}
+
+struct RateLimitingInstance {
+    max_count: u64,
+    window: Duration,
+    /// IP address → window state.
+    counters: Mutex<HashMap<String, WindowState>>,
+}
+
+impl Plugin for RateLimitingPlugin {
+    fn name(&self) -> &str {
+        "rate-limiting"
+    }
+
+    fn priority(&self) -> i32 {
+        1001
+    }
+
+    fn phases(&self) -> &[Phase] {
+        &[Phase::Access]
+    }
+
+    fn configure(&self, config: &serde_json::Value) -> anyhow::Result<Box<dyn PluginInstance>> {
+        let cfg: RateLimitingConfig = serde_json::from_value(config.clone())
+            .map_err(|e| anyhow::anyhow!("rate-limiting config error: {e}"))?;
+
+        Ok(Box::new(RateLimitingInstance {
+            max_count: cfg.count,
+            window: Duration::from_secs(cfg.time_window),
+            counters: Mutex::new(HashMap::new()),
+        }))
+    }
+}
+
+impl PluginInstance for RateLimitingInstance {
+    fn name(&self) -> &str {
+        "rate-limiting"
+    }
+
+    fn priority(&self) -> i32 {
+        1001
+    }
+
+    fn access(&self, ctx: &mut PluginContext) -> PluginResult {
+        let key = ctx.client_ip.clone();
+        let now = Instant::now();
+
+        let mut counters = self.counters.lock().unwrap();
+        let state = counters.entry(key).or_insert_with(|| WindowState {
+            count: 0,
+            window_start: now,
+        });
+
+        // Reset window if expired
+        if now.duration_since(state.window_start) >= self.window {
+            state.count = 0;
+            state.window_start = now;
+        }
+
+        state.count += 1;
+
+        if state.count > self.max_count {
+            return PluginResult::Response {
+                status: 429,
+                headers: vec![
+                    ("content-type".to_string(), "application/json".to_string()),
+                    ("retry-after".to_string(), self.window.as_secs().to_string()),
+                ],
+                body: Some(br#"{"error":"Too many requests","status":429}"#.to_vec()),
+            };
+        }
+
+        PluginResult::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_ctx(ip: &str) -> PluginContext {
+        PluginContext::new("r1".into(), ip.into(), "GET".into(), "/".into(), HashMap::new())
+    }
+
+    fn instance(count: u64, time_window: u64) -> RateLimitingInstance {
+        RateLimitingInstance {
+            max_count: count,
+            window: Duration::from_secs(time_window),
+            counters: Mutex::new(HashMap::new()),
+        }
+    }
+
+    // ── Within limit ─────────────────────────────────────────────
+
+    #[test]
+    fn requests_within_limit_continue() {
+        let inst = instance(5, 60);
+        for _ in 0..5 {
+            let result = inst.access(&mut make_ctx("1.2.3.4"));
+            assert!(matches!(result, PluginResult::Continue));
+        }
+    }
+
+    // ── Exceeding limit ──────────────────────────────────────────
+
+    #[test]
+    fn request_exceeding_limit_returns_429() {
+        let inst = instance(3, 60);
+        for _ in 0..3 {
+            inst.access(&mut make_ctx("1.2.3.4"));
+        }
+        let result = inst.access(&mut make_ctx("1.2.3.4"));
+        assert!(matches!(result, PluginResult::Response { status: 429, .. }));
+    }
+
+    // ── Different IPs are independent ────────────────────────────
+
+    #[test]
+    fn different_ips_have_independent_counters() {
+        let inst = instance(1, 60);
+        // First IP hits limit
+        inst.access(&mut make_ctx("1.1.1.1"));
+        assert!(matches!(inst.access(&mut make_ctx("1.1.1.1")), PluginResult::Response { status: 429, .. }));
+        // Second IP is unaffected
+        assert!(matches!(inst.access(&mut make_ctx("2.2.2.2")), PluginResult::Continue));
+    }
+
+    // ── Window reset ─────────────────────────────────────────────
+
+    #[test]
+    fn expired_window_resets_counter() {
+        // Use a 0-second window so it expires immediately
+        let inst = RateLimitingInstance {
+            max_count: 1,
+            window: Duration::from_nanos(1), // expires after 1ns
+            counters: Mutex::new(HashMap::new()),
+        };
+
+        // First request — within limit
+        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
+
+        // Sleep past the window
+        std::thread::sleep(Duration::from_millis(5));
+
+        // Window should have reset — first request of new window
+        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
+    }
+
+    // ── Limit = 0 blocks all requests ────────────────────────────
+
+    #[test]
+    fn zero_limit_blocks_all_requests() {
+        let inst = instance(0, 60);
+        let result = inst.access(&mut make_ctx("1.2.3.4"));
+        assert!(matches!(result, PluginResult::Response { status: 429, .. }));
+    }
+
+    // ── 429 response includes retry-after header ─────────────────
+
+    #[test]
+    fn rate_limited_response_includes_retry_after_header() {
+        let inst = instance(0, 30);
+        let result = inst.access(&mut make_ctx("1.2.3.4"));
+        match result {
+            PluginResult::Response { headers, .. } => {
+                let retry = headers.iter().find(|(k, _)| k == "retry-after");
+                assert!(retry.is_some(), "retry-after header must be present");
+                assert_eq!(retry.unwrap().1, "30");
+            }
+            _ => panic!("Expected Response"),
+        }
+    }
+}
