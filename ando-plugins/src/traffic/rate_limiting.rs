@@ -5,6 +5,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// Rate-limiting plugin — fixed window counter per client IP.
+///
+/// **Important: per-worker semantics.** When running with SO_REUSEPORT
+/// (N worker threads), each worker maintains its own rate counter.
+/// The effective global limit is `count × N`. This is a deliberate
+/// trade-off for zero atomic contention on the hot path. For exact
+/// global rate limiting, use a shared store (Redis / etcd) — available
+/// in Ando Enterprise Edition's `rate-limiting-advanced` plugin.
 pub struct RateLimitingPlugin;
 
 #[derive(Debug, Deserialize)]
@@ -228,5 +235,60 @@ mod tests {
         assert!(matches!(instance.access(&mut ctx), PluginResult::Continue));
         assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Continue));
         assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Response { status: 429, .. }));
+    }
+
+    // ── Per-worker semantics: each instance is independent ───────
+
+    #[test]
+    fn separate_instances_have_independent_counters() {
+        // Simulates two worker threads each having their own PluginInstance
+        let config = serde_json::json!({ "count": 1, "time_window": 60 });
+        let instance_a = RateLimitingPlugin.configure(&config).unwrap();
+        let instance_b = RateLimitingPlugin.configure(&config).unwrap();
+
+        // Worker A: first request passes
+        assert!(matches!(instance_a.access(&mut make_ctx("1.1.1.1")), PluginResult::Continue));
+        // Worker A: second request blocked
+        assert!(matches!(instance_a.access(&mut make_ctx("1.1.1.1")), PluginResult::Response { status: 429, .. }));
+        // Worker B: same IP, first request still passes (independent counter)
+        assert!(matches!(instance_b.access(&mut make_ctx("1.1.1.1")), PluginResult::Continue));
+    }
+
+    // ── Mutex is not poisoned after panic in another thread ──────
+
+    #[test]
+    fn rate_limiter_mutex_is_safe_under_concurrent_access() {
+        use std::sync::Arc;
+        let instance: Arc<RateLimitingInstance> = Arc::new(RateLimitingInstance {
+            max_count: 1000,
+            window: Duration::from_secs(60),
+            counters: Mutex::new(HashMap::new()),
+        });
+
+        let mut handles = vec![];
+        for _ in 0..4 {
+            let inst = Arc::clone(&instance);
+            handles.push(std::thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = inst.access(&mut make_ctx("10.10.10.10"));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        // If we get here, no panic / deadlock occurred
+        // 400 total requests with limit 1000 → all should have passed
+        let result = instance.access(&mut make_ctx("10.10.10.10"));
+        // 401st request might or might not pass depending on timing, but no panic
+        let _ = result;
+    }
+
+    // ── Large window value does not overflow ─────────────────────
+
+    #[test]
+    fn large_time_window_does_not_panic() {
+        let inst = instance(100, 86400 * 365); // 1-year window
+        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
     }
 }

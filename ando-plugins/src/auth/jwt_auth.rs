@@ -373,4 +373,103 @@ mod tests {
         assert!(matches!(result, PluginResult::Continue));
         assert!(ctx.consumer.is_none());
     }
+
+    // ── JWT edge cases: nbf (not-before) ─────────────────────────
+
+    #[test]
+    fn token_with_nbf_in_future_is_rejected() {
+        // jsonwebtoken validates nbf if present
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let claims = serde_json::json!({
+            "sub": "alice",
+            "exp": now + 7200,
+            "nbf": now + 3600, // not valid for another hour
+        });
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(SECRET.as_bytes()),
+        ).unwrap();
+
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = true;
+        validation.validate_nbf = true;
+        let inst = JwtAuthInstance {
+            decoding_key: DecodingKey::from_secret(SECRET.as_bytes()),
+            validation,
+            header: "authorization".to_string(),
+        };
+        let result = inst.access(&mut make_ctx(Some(&format!("Bearer {token}"))));
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
+            "token with nbf in the future should be rejected");
+    }
+
+    // ── JWT edge cases: algorithm mismatch ────────────────────────
+
+    #[test]
+    fn token_signed_with_hs384_rejected_by_hs256_instance() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let claims = serde_json::json!({ "sub": "alice", "exp": now + 3600 });
+        // Sign with HS384
+        let token = encode(
+            &Header::new(Algorithm::HS384),
+            &claims,
+            &EncodingKey::from_secret(SECRET.as_bytes()),
+        ).unwrap();
+        // Validate expecting HS256
+        let inst = make_instance(); // HS256
+        let result = inst.access(&mut make_ctx(Some(&format!("Bearer {token}"))));
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
+            "HS384 token must be rejected by HS256 validator");
+    }
+
+    // ── JWT edge cases: empty token string ────────────────────────
+
+    #[test]
+    fn empty_bearer_token_returns_401() {
+        let inst = make_instance();
+        let result = inst.access(&mut make_ctx(Some("Bearer ")));
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
+            "empty bearer token must be rejected");
+    }
+
+    #[test]
+    fn empty_string_header_returns_401() {
+        let inst = make_instance();
+        let result = inst.access(&mut make_ctx(Some("")));
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
+            "empty string header must be rejected");
+    }
+
+    // ── JWT: 401 response includes WWW-Authenticate header ───────
+
+    #[test]
+    fn jwt_401_response_includes_www_authenticate() {
+        let inst = make_instance();
+        let result = inst.access(&mut make_ctx(None));
+        match result {
+            PluginResult::Response { headers, status, .. } => {
+                assert_eq!(status, 401);
+                let www_auth = headers.iter().find(|(k, _)| k == "www-authenticate");
+                assert!(www_auth.is_some(), "401 must include www-authenticate header");
+                assert_eq!(www_auth.unwrap().1, "Bearer");
+            }
+            _ => panic!("Expected 401 Response"),
+        }
+    }
+
+    // ── JWT: token with extra whitespace ──────────────────────────
+
+    #[test]
+    fn bearer_token_with_extra_whitespace_is_trimmed() {
+        let inst = make_instance();
+        let token = make_token("alice", 3600);
+        let mut ctx = make_ctx(Some(&format!("Bearer   {token}  ")));
+        let result = inst.access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue),
+            "token with surrounding whitespace should be accepted");
+        assert_eq!(ctx.consumer.as_deref(), Some("alice"));
+    }
 }

@@ -622,9 +622,68 @@ compliance:
 
     #[test]
     fn compliance_soc2_mode_defaults() {
-        let mut cfg = ComplianceConfig::default();
-        cfg.soc2 = true;
+        let cfg = ComplianceConfig { soc2: true, ..Default::default() };
         assert_eq!(cfg.tls.min_version, "TLSv1.2");
         assert_eq!(cfg.log_retention_days, 365);
+    }
+
+    // ── Negative config tests ─────────────────────────────────────
+
+    #[test]
+    fn load_yaml_with_wrong_type_for_workers_returns_error() {
+        let yaml = "proxy:\n  workers: \"not-a-number\"\n";
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let result = GatewayConfig::load(tmpfile.path());
+        assert!(result.is_err(), "YAML with wrong type for workers should error");
+    }
+
+    #[test]
+    fn load_yaml_with_unknown_deployment_mode_returns_error() {
+        let yaml = "deployment:\n  mode: \"cluster\"\n";
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let result = GatewayConfig::load(tmpfile.path());
+        assert!(result.is_err(), "Unknown deployment mode should error");
+    }
+
+    #[test]
+    fn load_yaml_with_invalid_yaml_syntax_returns_error() {
+        let yaml = "proxy:\n  http_addr: [invalid yaml\n";
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let result = GatewayConfig::load(tmpfile.path());
+        assert!(result.is_err(), "Invalid YAML syntax should error");
+    }
+
+    #[test]
+    fn load_empty_yaml_file_gives_defaults() {
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "").unwrap();
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert_eq!(cfg.proxy.http_addr, "0.0.0.0:9080");
+        assert_eq!(cfg.deployment.mode, DeploymentMode::Standalone);
+    }
+
+    #[test]
+    fn load_yaml_with_extra_unknown_keys_is_ok() {
+        let yaml = "proxy:\n  http_addr: '0.0.0.0:7777'\nfuture_feature:\n  key: value\n";
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        // figment silently ignores unknown keys
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert_eq!(cfg.proxy.http_addr, "0.0.0.0:7777");
+    }
+
+    // ── GatewayConfig serde round-trip ────────────────────────────
+
+    #[test]
+    fn gateway_config_json_roundtrip() {
+        let cfg = GatewayConfig::default();
+        let json = serde_json::to_string(&cfg).unwrap();
+        let cfg2: GatewayConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg2.proxy.http_addr, cfg.proxy.http_addr);
+        assert_eq!(cfg2.admin.addr, cfg.admin.addr);
+        assert_eq!(cfg2.deployment.mode, cfg.deployment.mode);
     }
 }

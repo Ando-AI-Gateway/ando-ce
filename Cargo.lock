@@ -67,6 +67,7 @@ dependencies = [
  "chrono",
  "itoa",
  "prometheus",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

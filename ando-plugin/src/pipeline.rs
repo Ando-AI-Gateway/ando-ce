@@ -265,4 +265,97 @@ mod tests {
         assert!(!pipeline.has_phase(Phase::HeaderFilter));
         assert!(!pipeline.has_phase(Phase::Log));
     }
+
+    // ── Priority ordering: higher priority runs first ─────────────
+
+    /// A plugin that appends its name to a shared log vec via context vars.
+    struct OrderPlugin { label: String, prio: i32 }
+    impl PluginInstance for OrderPlugin {
+        fn name(&self) -> &str { &self.label }
+        fn priority(&self) -> i32 { self.prio }
+        fn access(&self, ctx: &mut PluginContext) -> PluginResult {
+            let log = ctx.vars.entry("_order".to_string())
+                .or_insert_with(|| serde_json::Value::Array(vec![]));
+            if let serde_json::Value::Array(arr) = log {
+                arr.push(serde_json::Value::String(self.label.clone()));
+            }
+            PluginResult::Continue
+        }
+    }
+
+    #[test]
+    fn plugins_execute_in_priority_order_descending() {
+        let a: Arc<dyn PluginInstance> = Arc::new(OrderPlugin { label: "low".into(),  prio: 100 });
+        let b: Arc<dyn PluginInstance> = Arc::new(OrderPlugin { label: "high".into(), prio: 3000 });
+        let c: Arc<dyn PluginInstance> = Arc::new(OrderPlugin { label: "mid".into(),  prio: 1000 });
+
+        let pipeline = PluginPipeline::build(vec![a, b, c], false);
+        let mut ctx = make_ctx();
+        pipeline.execute_phase(Phase::Access, &mut ctx);
+
+        let order = ctx.vars.get("_order")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        assert_eq!(order, vec!["high", "mid", "low"],
+            "plugins must execute in descending priority order");
+    }
+
+    // ── Block plugin short-circuits: later plugins DO NOT run ─────
+
+    #[test]
+    fn block_plugin_prevents_later_plugins_from_running() {
+        let first: Arc<dyn PluginInstance> = Arc::new(OrderPlugin { label: "first".into(), prio: 3000 });
+        let _blocker: Arc<dyn PluginInstance> = Arc::new(BlockPlugin { status: 403 });
+        // BlockPlugin has priority 10 — but we'll bump it
+        struct HighBlockPlugin;
+        impl PluginInstance for HighBlockPlugin {
+            fn name(&self) -> &str { "high-block" }
+            fn priority(&self) -> i32 { 2000 }
+            fn access(&self, _ctx: &mut PluginContext) -> PluginResult {
+                PluginResult::Response { status: 403, headers: vec![], body: None }
+            }
+        }
+        let high_blocker: Arc<dyn PluginInstance> = Arc::new(HighBlockPlugin);
+        let last: Arc<dyn PluginInstance> = Arc::new(OrderPlugin { label: "last".into(), prio: 100 });
+
+        let pipeline = PluginPipeline::build(vec![first, high_blocker, last], false);
+        let mut ctx = make_ctx();
+        let result = pipeline.execute_phase(Phase::Access, &mut ctx);
+
+        assert!(matches!(result, PluginResult::Response { status: 403, .. }));
+        // "first" (prio 3000) should have run, "last" (prio 100) should NOT
+        let order = ctx.vars.get("_order")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        assert_eq!(order, vec!["first"], "only plugins before the blocker should have run");
+    }
+
+    // ── Multiple phases execute independently ─────────────────────
+
+    #[test]
+    fn different_phases_are_independent() {
+        struct RewriteOnlyPlugin;
+        impl PluginInstance for RewriteOnlyPlugin {
+            fn name(&self) -> &str { "rw-only" }
+            fn rewrite(&self, ctx: &mut PluginContext) -> PluginResult {
+                ctx.consumer = Some("rewrite-ran".into());
+                PluginResult::Continue
+            }
+        }
+        let plugin: Arc<dyn PluginInstance> = Arc::new(RewriteOnlyPlugin);
+        let pipeline = PluginPipeline::build(vec![plugin], false);
+        let mut ctx = make_ctx();
+
+        // Access phase: default no-op implementation should Continue
+        let result = pipeline.execute_phase(Phase::Access, &mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        // consumer not set by access phase
+        assert!(ctx.consumer.is_none());
+
+        // Rewrite phase: should set consumer
+        pipeline.execute_phase(Phase::Rewrite, &mut ctx);
+        assert_eq!(ctx.consumer.as_deref(), Some("rewrite-ran"));
+    }
 }

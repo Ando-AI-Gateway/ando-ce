@@ -744,4 +744,164 @@ mod tests {
         let addrs = w.upstream_addresses();
         assert!(addrs.contains(&"10.0.0.1:8080".to_string()));
     }
+
+    // ── resolve_upstream: fallback to 127.0.0.1:80 ───────────────
+
+    #[test]
+    fn handle_request_no_upstream_falls_back_to_localhost() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/no-ups", "status": 1
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+        let result = w.handle_request("GET", "/no-ups", None, &[], "x");
+        match result {
+            RequestResult::Proxy { upstream_addr } => {
+                assert_eq!(upstream_addr, "127.0.0.1:80",
+                    "route with no upstream should fallback to 127.0.0.1:80");
+            }
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+    }
+
+    // ── resolve_upstream: via upstream_id reference ───────────────
+
+    #[test]
+    fn handle_request_resolves_upstream_by_id() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/ref-ups", "status": 1,
+            "upstream_id": "ups1"
+        })).unwrap();
+        let cache = ConfigCache::new();
+        let ups: Upstream = serde_json::from_value(serde_json::json!({
+            "id": "ups1",
+            "nodes": { "10.0.0.2:9090": 1 },
+            "type": "roundrobin"
+        })).unwrap();
+        cache.upstreams.insert("ups1".to_string(), ups);
+
+        let mut w = make_worker_with_registry(vec![route], PluginRegistry::new(), cache);
+        let result = w.handle_request("GET", "/ref-ups", None, &[], "x");
+        match result {
+            RequestResult::Proxy { upstream_addr } => {
+                assert_eq!(upstream_addr, "10.0.0.2:9090");
+            }
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+    }
+
+    // ── resolve_upstream: via service_id → upstream ──────────────
+
+    #[test]
+    fn handle_request_resolves_upstream_via_service() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/svc", "status": 1,
+            "service_id": "svc1"
+        })).unwrap();
+        let cache = ConfigCache::new();
+        let svc = ando_core::service::Service {
+            id: "svc1".into(),
+            name: None, desc: None,
+            upstream_id: None,
+            upstream: Some(serde_json::from_value(serde_json::json!({
+                "nodes": { "10.0.0.3:7070": 1 },
+                "type": "roundrobin"
+            })).unwrap()),
+            plugins: HashMap::new(),
+            labels: HashMap::new(),
+        };
+        cache.services.insert("svc1".to_string(), svc);
+
+        let mut w = make_worker_with_registry(vec![route], PluginRegistry::new(), cache);
+        let result = w.handle_request("GET", "/svc", None, &[], "x");
+        match result {
+            RequestResult::Proxy { upstream_addr } => {
+                assert_eq!(upstream_addr, "10.0.0.3:7070");
+            }
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+    }
+
+    // ── pipeline cache: same route builds pipeline once ───────────
+
+    #[test]
+    fn pipeline_is_cached_across_requests() {
+        let mut registry = PluginRegistry::new();
+        ando_plugins::register_all(&mut registry);
+        let route = route_with_key_auth("r1", "/cached", "127.0.0.1:8080");
+        let mut w = make_worker_with_registry(vec![route], registry, ConfigCache::new());
+
+        // First request — builds pipeline
+        let _ = w.handle_request("GET", "/cached", None, &[("apikey", "k")], "x");
+        assert!(w.pipeline_cache.contains_key("r1"), "pipeline must be cached");
+
+        // Second request — uses cache (same route_id)
+        let before_len = w.pipeline_cache.len();
+        let _ = w.handle_request("GET", "/cached", None, &[("apikey", "k")], "x");
+        assert_eq!(w.pipeline_cache.len(), before_len, "cache should not grow for same route");
+    }
+
+    // ── maybe_update_router clears pipeline cache ────────────────
+
+    #[test]
+    fn maybe_update_router_clears_pipeline_cache() {
+        let mut registry = PluginRegistry::new();
+        ando_plugins::register_all(&mut registry);
+        let route = route_with_key_auth("r1", "/cached", "127.0.0.1:8080");
+        let mut w = make_worker_with_registry(vec![route.clone()], registry, ConfigCache::new());
+
+        // Prime the cache
+        let _ = w.handle_request("GET", "/cached", None, &[("apikey", "k")], "x");
+        assert!(!w.pipeline_cache.is_empty());
+
+        // Config update (new version)
+        let new_router = Arc::new(Router::build(vec![route], w.router_version + 1).unwrap());
+        w.maybe_update_router(new_router);
+        assert!(w.pipeline_cache.is_empty(), "pipeline cache must be cleared on router update");
+    }
+
+    // ── ConnPool: take from empty returns None ───────────────────
+
+    #[test]
+    fn conn_pool_take_empty_returns_none() {
+        let mut pool = ConnPool::new(10);
+        assert!(pool.take("127.0.0.1:8080").is_none());
+    }
+
+    // ── ConnPool: max_idle enforced ──────────────────────────────
+
+    // NOTE: Cannot test put/take with real TcpStream in unit tests
+    // (requires monoio runtime). ConnPool correctness is verified in
+    // connection_integration.rs E2E tests.
+
+    // ── build_upstream_request: no body = no content-length ──────
+
+    #[test]
+    fn build_upstream_request_no_body_no_content_length() {
+        let mut buf = Vec::new();
+        build_upstream_request(&mut buf, "GET", "/test", &[], b"");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(!text.contains("content-length:"),
+            "GET with empty body should not add content-length");
+    }
+
+    // ── build_response: non-standard status code ─────────────────
+
+    #[test]
+    fn build_response_non_standard_status_code() {
+        let mut buf = Vec::new();
+        build_response(&mut buf, 418, &[], b"I'm a teapot");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.starts_with("HTTP/1.1 418 Unknown\r\n"));
+        assert!(text.ends_with("I'm a teapot"));
+    }
+
+    // ── RESP_502 is valid HTTP ───────────────────────────────────
+
+    #[test]
+    fn resp_502_is_valid_http_response() {
+        let text = String::from_utf8_lossy(RESP_502);
+        assert!(text.starts_with("HTTP/1.1 502 Bad Gateway\r\n"));
+        assert!(text.contains("content-type: application/json"));
+        assert!(text.contains("upstream error"));
+    }
 }

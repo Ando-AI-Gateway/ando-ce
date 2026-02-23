@@ -242,7 +242,7 @@ mod tests {
         let json = serde_json::to_string(&e).unwrap();
         let e2: AuditLogEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(e2.consumer_id, e.consumer_id);
-        assert_eq!(e2.pii_scrubbed, true);
+        assert!(e2.pii_scrubbed);
         assert_eq!(e2.request_body_hash.as_deref(), Some("abcdef1234567890"));
     }
 

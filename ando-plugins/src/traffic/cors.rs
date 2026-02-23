@@ -272,4 +272,116 @@ mod tests {
         let config = serde_json::json!({ "allow_origins": "not-an-array" });
         assert!(CorsPlugin.configure(&config).is_err());
     }
+
+    // ── Preflight: max-age is present and correct ────────────────
+
+    #[test]
+    fn preflight_response_includes_max_age() {
+        let inst = instance(serde_json::json!({ "max_age": 600 }));
+        let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
+        match result {
+            PluginResult::Response { headers, .. } => {
+                let max_age = headers.iter().find(|(k, _)| k == "access-control-max-age");
+                assert!(max_age.is_some(), "max-age must be present");
+                assert_eq!(max_age.unwrap().1, "600");
+            }
+            _ => panic!("Expected preflight Response"),
+        }
+    }
+
+    // ── Preflight: content-length: 0 header ───────────────────────
+
+    #[test]
+    fn preflight_response_has_zero_content_length() {
+        let inst = instance(serde_json::json!({}));
+        let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
+        match result {
+            PluginResult::Response { headers, .. } => {
+                let cl = headers.iter().find(|(k, _)| k == "content-length");
+                assert!(cl.is_some(), "content-length must be present in preflight");
+                assert_eq!(cl.unwrap().1, "0");
+            }
+            _ => panic!("Expected preflight Response"),
+        }
+    }
+
+    // ── Preflight: disallowed origin returns 403, not 204 ────────
+
+    #[test]
+    fn preflight_disallowed_origin_returns_403() {
+        let inst = instance(serde_json::json!({
+            "allow_origins": ["https://good.com"]
+        }));
+        let result = inst.access(&mut make_ctx("OPTIONS", Some("https://evil.com")));
+        assert!(matches!(result, PluginResult::Response { status: 403, .. }),
+            "OPTIONS with disallowed origin must return 403, not 204");
+    }
+
+    // ── Simple request stores all CORS vars in context ────────────
+
+    #[test]
+    fn simple_request_stores_all_cors_headers_in_vars() {
+        let inst = instance(serde_json::json!({
+            "allow_methods": ["GET", "POST"],
+            "allow_headers": ["Content-Type"],
+            "allow_credentials": true,
+            "max_age": 3600,
+            "allow_origins": ["https://example.com"]
+        }));
+        let mut ctx = make_ctx("GET", Some("https://example.com"));
+        let result = inst.access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert!(ctx.vars.contains_key("_cors_access-control-allow-origin"));
+        assert!(ctx.vars.contains_key("_cors_access-control-allow-methods"));
+        assert!(ctx.vars.contains_key("_cors_access-control-allow-headers"));
+        assert!(ctx.vars.contains_key("_cors_access-control-max-age"));
+        assert!(ctx.vars.contains_key("_cors_access-control-allow-credentials"));
+    }
+
+    // ── Wildcard origin: reflected as "*" not the actual origin ────
+
+    #[test]
+    fn wildcard_origin_reflects_star_not_actual_origin() {
+        let inst = instance(serde_json::json!({})); // defaults to allow_origins: ["*"]
+        let mut ctx = make_ctx("GET", Some("https://specific-origin.com"));
+        inst.access(&mut ctx);
+        let origin_val = ctx.vars.get("_cors_access-control-allow-origin")
+            .and_then(|v| v.as_str());
+        assert_eq!(origin_val, Some("*"),
+            "wildcard config should reflect '*' not the actual origin");
+    }
+
+    // ── Specific origin: reflected as the matched origin ──────────
+
+    #[test]
+    fn specific_origin_reflects_actual_origin() {
+        let inst = instance(serde_json::json!({
+            "allow_origins": ["https://example.com"]
+        }));
+        let mut ctx = make_ctx("GET", Some("https://example.com"));
+        inst.access(&mut ctx);
+        let origin_val = ctx.vars.get("_cors_access-control-allow-origin")
+            .and_then(|v| v.as_str());
+        assert_eq!(origin_val, Some("https://example.com"),
+            "specific allow_origins should reflect the actual origin");
+    }
+
+    // ── Credentials not added when false ──────────────────────────
+
+    #[test]
+    fn no_credentials_header_when_allow_credentials_false() {
+        let inst = instance(serde_json::json!({
+            "allow_credentials": false,
+            "allow_origins": ["https://example.com"]
+        }));
+        let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
+        match result {
+            PluginResult::Response { headers, .. } => {
+                let cred = headers.iter().find(|(k, _)| k == "access-control-allow-credentials");
+                assert!(cred.is_none(),
+                    "allow-credentials header should not be sent when false");
+            }
+            _ => panic!("Expected Response"),
+        }
+    }
 }
