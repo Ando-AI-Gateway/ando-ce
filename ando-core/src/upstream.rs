@@ -81,4 +81,87 @@ impl Upstream {
     pub fn first_node(&self) -> Option<&str> {
         self.nodes.keys().next().map(|s| s.as_str())
     }
+
+    /// Returns true if there are no nodes.
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_upstream(nodes: Vec<(&str, u32)>) -> Upstream {
+        Upstream {
+            id: Some("us1".into()),
+            name: Some("test".into()),
+            lb_type: "roundrobin".into(),
+            nodes: nodes.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            health_check: None,
+            connect_timeout_ms: None,
+            read_timeout_ms: None,
+            write_timeout_ms: None,
+            pass_host: "pass".into(),
+            upstream_host: None,
+            retries: 1,
+            desc: None,
+            labels: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_first_node_empty() {
+        let us = make_upstream(vec![]);
+        assert!(us.first_node().is_none());
+        assert!(us.is_empty());
+    }
+
+    #[test]
+    fn test_first_node_single() {
+        let us = make_upstream(vec![("127.0.0.1:8080", 1)]);
+        assert_eq!(us.first_node(), Some("127.0.0.1:8080"));
+        assert!(!us.is_empty());
+    }
+
+    #[test]
+    fn test_defaults_from_serde() {
+        let json = r#"{"nodes":{"127.0.0.1:8080":1}}"#;
+        let us: Upstream = serde_json::from_str(json).unwrap();
+        assert_eq!(us.lb_type, "roundrobin");
+        assert_eq!(us.pass_host, "pass");
+        assert_eq!(us.retries, 1);
+    }
+
+    #[test]
+    fn test_serde_roundtrip_multiple_nodes() {
+        let us = make_upstream(vec![("10.0.0.1:9000", 100), ("10.0.0.2:9000", 50)]);
+        let json = serde_json::to_string(&us).unwrap();
+        let decoded: Upstream = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.nodes.len(), 2);
+        assert_eq!(decoded.nodes.get("10.0.0.1:9000"), Some(&100));
+        assert_eq!(decoded.nodes.get("10.0.0.2:9000"), Some(&50));
+    }
+
+    #[test]
+    fn test_weighted_nodes() {
+        let us = make_upstream(vec![("a:80", 10), ("b:80", 20), ("c:80", 30)]);
+        assert_eq!(us.nodes.len(), 3);
+        assert_eq!(us.nodes["a:80"], 10);
+        assert_eq!(us.nodes["b:80"], 20);
+        assert_eq!(us.nodes["c:80"], 30);
+    }
+
+    #[test]
+    fn test_health_check_defaults() {
+        let json = r#"{"nodes":{"127.0.0.1:8080":1},"health_check":{"active":{}}}"#;
+        let us: Upstream = serde_json::from_str(json).unwrap();
+        let hc = us.health_check.unwrap();
+        let active = hc.active.unwrap();
+        assert_eq!(active.r#type, "http");
+        assert_eq!(active.interval, 5);
+        assert_eq!(active.timeout, 3);
+        assert_eq!(active.healthy_successes, 2);
+        assert_eq!(active.unhealthy_failures, 3);
+    }
 }

@@ -100,3 +100,147 @@ impl PluginInstance for KeyAuthInstance {
         PluginResult::Continue
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_ctx(headers: Vec<(&str, &str)>) -> PluginContext {
+        let map: HashMap<String, String> = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        PluginContext::new("r1".into(), "1.2.3.4".into(), "GET".into(), "/".into(), map)
+    }
+
+    fn inst(header: &str, hide: bool) -> KeyAuthInstance {
+        KeyAuthInstance { header: header.to_lowercase(), hide_credentials: hide }
+    }
+
+    // ── Missing / empty key ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_missing_key_returns_401() {
+        let mut ctx = make_ctx(vec![]);
+        let result = inst("apikey", false).access(&mut ctx);
+        if let PluginResult::Response { status, body, headers } = result {
+            assert_eq!(status, 401);
+            let body_text = String::from_utf8(body.unwrap()).unwrap();
+            assert!(body_text.contains("Missing API key"));
+            assert!(headers.iter().any(|(k, _)| k == "www-authenticate"));
+        } else {
+            panic!("Expected 401 Response");
+        }
+    }
+
+    #[test]
+    fn test_empty_key_returns_401() {
+        let mut ctx = make_ctx(vec![("apikey", "")]);
+        let result = inst("apikey", false).access(&mut ctx);
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }));
+    }
+
+    // ── Valid key ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_valid_key_stored_in_vars() {
+        let mut ctx = make_ctx(vec![("apikey", "my-secret-key")]);
+        let result = inst("apikey", false).access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert_eq!(ctx.vars["_key_auth_key"], serde_json::json!("my-secret-key"));
+    }
+
+    #[test]
+    fn test_key_value_preserved_correctly() {
+        let mut ctx = make_ctx(vec![("apikey", "Bearer eyJhbGci")]);
+        inst("apikey", false).access(&mut ctx);
+        assert_eq!(ctx.vars["_key_auth_key"], "Bearer eyJhbGci");
+    }
+
+    // ── hide_credentials ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_hide_credentials_removes_header() {
+        let mut ctx = make_ctx(vec![("apikey", "my-key")]);
+        inst("apikey", true).access(&mut ctx);
+        assert!(ctx.request_headers.get("apikey").is_none(), "header must be removed");
+    }
+
+    #[test]
+    fn test_no_hide_keeps_header() {
+        let mut ctx = make_ctx(vec![("apikey", "my-key")]);
+        inst("apikey", false).access(&mut ctx);
+        assert_eq!(ctx.request_headers.get("apikey").map(|s| s.as_str()), Some("my-key"));
+    }
+
+    // ── Custom header name ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_custom_header_matches() {
+        let mut ctx = make_ctx(vec![("x-api-key", "custom-key")]);
+        let result = inst("x-api-key", false).access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert_eq!(ctx.vars["_key_auth_key"], "custom-key");
+    }
+
+    #[test]
+    fn test_custom_header_wrong_name_returns_401() {
+        // Configured for x-api-key but sends apikey — should reject
+        let mut ctx = make_ctx(vec![("apikey", "some-key")]);
+        let result = inst("x-api-key", false).access(&mut ctx);
+        assert!(matches!(result, PluginResult::Response { status: 401, .. }));
+    }
+
+    #[test]
+    fn test_header_name_case_insensitive_config() {
+        // configure() lowercases the header; lookup uses lowercase header from ctx
+        let mut ctx = make_ctx(vec![("x-api-key", "k")]);
+        let result = inst("X-Api-Key", false).access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+    }
+
+    // ── Plugin metadata ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_plugin_name_and_priority() {
+        use ando_plugin::plugin::Plugin;
+        assert_eq!(KeyAuthPlugin.name(), "key-auth");
+        assert_eq!(KeyAuthPlugin.priority(), 2500);
+        assert_eq!(KeyAuthPlugin.phases(), &[Phase::Access]);
+    }
+
+    #[test]
+    fn test_instance_name_and_priority() {
+        let i = inst("apikey", false);
+        assert_eq!(i.name(), "key-auth");
+        assert_eq!(i.priority(), 2500);
+    }
+
+    // ── configure() factory ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_configure_defaults() {
+        use ando_plugin::plugin::Plugin;
+        let plugin = KeyAuthPlugin;
+        let i = plugin.configure(&serde_json::json!({})).unwrap();
+        assert_eq!(i.name(), "key-auth");
+        // Default header = apikey
+        let mut ctx = make_ctx(vec![("apikey", "test-key")]);
+        assert!(matches!(i.access(&mut ctx), PluginResult::Continue));
+    }
+
+    #[test]
+    fn test_configure_custom_header_and_hide() {
+        use ando_plugin::plugin::Plugin;
+        let i = KeyAuthPlugin.configure(&serde_json::json!({
+            "header": "authorization",
+            "hide_credentials": true
+        })).unwrap();
+        let mut ctx = make_ctx(vec![("authorization", "token-abc")]);
+        let result = i.access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        // header removed because hide_credentials = true
+        assert!(ctx.request_headers.get("authorization").is_none());
+    }
+}

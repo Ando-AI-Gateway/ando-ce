@@ -158,3 +158,111 @@ impl PluginPipeline {
         self.access.is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::{PluginContext, PluginInstance, PluginResult};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn make_ctx() -> PluginContext {
+        PluginContext::new(
+            "r1".into(),
+            "127.0.0.1".into(),
+            "GET".into(),
+            "/test".into(),
+            HashMap::new(),
+        )
+    }
+
+    struct PassPlugin;
+    impl PluginInstance for PassPlugin {
+        fn name(&self) -> &str { "pass" }
+        fn access(&self, _ctx: &mut PluginContext) -> PluginResult { PluginResult::Continue }
+    }
+
+    struct BlockPlugin { status: u16 }
+    impl PluginInstance for BlockPlugin {
+        fn name(&self) -> &str { "block" }
+        fn priority(&self) -> i32 { 10 }
+        fn access(&self, _ctx: &mut PluginContext) -> PluginResult {
+            PluginResult::Response {
+                status: self.status,
+                headers: vec![],
+                body: Some(b"blocked".to_vec()),
+            }
+        }
+    }
+
+    struct SetConsumerPlugin;
+    impl PluginInstance for SetConsumerPlugin {
+        fn name(&self) -> &str { "set-consumer" }
+        fn rewrite(&self, ctx: &mut PluginContext) -> PluginResult {
+            ctx.consumer = Some("alice".into());
+            PluginResult::Continue
+        }
+    }
+
+    #[test]
+    fn test_empty_pipeline_continue() {
+        let pipeline = PluginPipeline::build(vec![], false);
+        let mut ctx = make_ctx();
+        let result = pipeline.execute_phase(Phase::Access, &mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert!(pipeline.is_empty());
+        assert!(!pipeline.has_auth_plugins());
+    }
+
+    #[test]
+    fn test_pass_plugin_continues() {
+        let plugin: Arc<dyn PluginInstance> = Arc::new(PassPlugin);
+        let pipeline = PluginPipeline::build(vec![plugin], false);
+        let mut ctx = make_ctx();
+        let result = pipeline.execute_phase(Phase::Access, &mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+    }
+
+    #[test]
+    fn test_block_plugin_short_circuits() {
+        let plugin: Arc<dyn PluginInstance> = Arc::new(BlockPlugin { status: 403 });
+        let pipeline = PluginPipeline::build(vec![plugin], false);
+        let mut ctx = make_ctx();
+        let result = pipeline.execute_phase(Phase::Access, &mut ctx);
+        if let PluginResult::Response { status, body, .. } = result {
+            assert_eq!(status, 403);
+            assert_eq!(body.unwrap(), b"blocked");
+        } else {
+            panic!("Expected Response from block plugin");
+        }
+    }
+
+    #[test]
+    fn test_rewrite_phase_modifies_context() {
+        let plugin: Arc<dyn PluginInstance> = Arc::new(SetConsumerPlugin);
+        let pipeline = PluginPipeline::build(vec![plugin], false);
+        let mut ctx = make_ctx();
+        let result = pipeline.execute_phase(Phase::Rewrite, &mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert_eq!(ctx.consumer.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn test_has_phase_with_plugins() {
+        let plugin: Arc<dyn PluginInstance> = Arc::new(PassPlugin);
+        let pipeline = PluginPipeline::build(vec![plugin], true);
+        assert!(pipeline.has_phase(Phase::Access));
+        assert!(pipeline.has_phase(Phase::Rewrite));
+        assert!(pipeline.has_auth_plugins());
+        assert_eq!(pipeline.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_pipeline_no_phases() {
+        let pipeline = PluginPipeline::build(vec![], false);
+        assert!(!pipeline.has_phase(Phase::Access));
+        assert!(!pipeline.has_phase(Phase::Rewrite));
+        assert!(!pipeline.has_phase(Phase::HeaderFilter));
+        assert!(!pipeline.has_phase(Phase::Log));
+    }
+}

@@ -123,3 +123,106 @@ pub trait PluginInstance: Send + Sync {
     /// Execute log phase (fire-and-forget).
     fn log(&self, _ctx: &PluginContext) {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_ctx(headers: Vec<(&str, &str)>) -> PluginContext {
+        let map: HashMap<String, String> = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        PluginContext::new(
+            "route1".into(),
+            "127.0.0.1".into(),
+            "GET".into(),
+            "/api/test".into(),
+            map,
+        )
+    }
+
+    #[test]
+    fn test_context_fields() {
+        let ctx = make_ctx(vec![("apikey", "my-key"), ("content-type", "application/json")]);
+        assert_eq!(ctx.route_id, "route1");
+        assert_eq!(ctx.client_ip, "127.0.0.1");
+        assert_eq!(ctx.method, "GET");
+        assert_eq!(ctx.uri, "/api/test");
+        assert!(ctx.response_status.is_none());
+        assert!(ctx.consumer.is_none());
+        assert!(ctx.vars.is_empty());
+        assert!(ctx.response_headers.is_empty());
+    }
+
+    #[test]
+    fn test_get_header_present() {
+        let ctx = make_ctx(vec![("apikey", "secret")]);
+        assert_eq!(ctx.get_header("apikey"), Some("secret"));
+    }
+
+    #[test]
+    fn test_get_header_absent() {
+        let ctx = make_ctx(vec![]);
+        assert_eq!(ctx.get_header("apikey"), None);
+        assert_eq!(ctx.get_header("x-token"), None);
+    }
+
+    #[test]
+    fn test_context_vars_mutable() {
+        let mut ctx = make_ctx(vec![]);
+        ctx.vars.insert("_key".into(), serde_json::json!("value"));
+        assert_eq!(ctx.vars["_key"], "value");
+    }
+
+    #[test]
+    fn test_context_consumer_mutable() {
+        let mut ctx = make_ctx(vec![]);
+        ctx.consumer = Some("alice".into());
+        assert_eq!(ctx.consumer.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn test_plugin_result_continue() {
+        let result = PluginResult::Continue;
+        assert!(matches!(result, PluginResult::Continue));
+    }
+
+    #[test]
+    fn test_plugin_result_response_401() {
+        let result = PluginResult::Response {
+            status: 401,
+            headers: vec![("www-authenticate".into(), "Bearer".into())],
+            body: Some(b"Unauthorized".to_vec()),
+        };
+        if let PluginResult::Response { status, body, .. } = result {
+            assert_eq!(status, 401);
+            assert_eq!(body.unwrap(), b"Unauthorized");
+        } else {
+            panic!("Expected Response variant");
+        }
+    }
+
+    #[test]
+    fn test_plugin_result_response_no_body() {
+        let result = PluginResult::Response {
+            status: 429,
+            headers: vec![],
+            body: None,
+        };
+        if let PluginResult::Response { status, body, .. } = result {
+            assert_eq!(status, 429);
+            assert!(body.is_none());
+        } else {
+            panic!("Expected Response variant");
+        }
+    }
+
+    #[test]
+    fn test_phase_equality() {
+        assert_eq!(Phase::Access, Phase::Access);
+        assert_ne!(Phase::Access, Phase::Rewrite);
+        assert_ne!(Phase::HeaderFilter, Phase::BodyFilter);
+    }
+}
