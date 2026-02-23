@@ -1,3 +1,4 @@
+use crate::persist;
 use crate::server::AdminState;
 use ando_core::route::Route;
 use ando_core::router::Router;
@@ -31,6 +32,9 @@ pub async fn put_route(
     // Rebuild router
     rebuild_router(&state);
 
+    // Persist to file (no-op if state_file is None)
+    persist::save_state(&state);
+
     (StatusCode::OK, Json(json!({"id": route.id, "status": "created"})))
 }
 
@@ -55,6 +59,7 @@ pub async fn delete_route(
 ) -> (StatusCode, Json<Value>) {
     state.cache.routes.remove(&id);
     rebuild_router(&state);
+    persist::save_state(&state);
     (StatusCode::OK, Json(json!({"deleted": true})))
 }
 

@@ -24,6 +24,7 @@ fn make_state() -> Arc<AdminState> {
         router_swap: Arc::new(ArcSwap::new(Arc::new(initial_router))),
         plugin_registry: Arc::new(PluginRegistry::new()),
         config_changed: Arc::new(Notify::new()),
+        state_file: None, // tests run in-memory, no disk I/O
     })
 }
 

@@ -8,6 +8,7 @@ use axum::{
     routing::{delete, get, put},
     Router as AxumRouter,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::info;
@@ -19,6 +20,9 @@ pub struct AdminState {
     pub plugin_registry: Arc<PluginRegistry>,
     /// Signal worker threads that config has changed.
     pub config_changed: Arc<Notify>,
+    /// Path to the JSON file used for persistence (standalone mode).
+    /// `None` in unit-test contexts — persistence is skipped.
+    pub state_file: Option<PathBuf>,
 }
 
 /// Start the admin API server on a dedicated tokio runtime.

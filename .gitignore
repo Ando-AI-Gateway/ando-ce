@@ -25,3 +25,6 @@
 benchmark/results/
 benchmark/ando-native.log
 v1/benchmark/results/
+
+# Runtime state (persisted Admin API data — not source-controlled)
+data/

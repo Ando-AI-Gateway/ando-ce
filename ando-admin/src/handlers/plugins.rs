@@ -51,7 +51,7 @@ pub async fn list_plugins(
                 "available": false,
                 "edition":   "enterprise",
                 "locked":    true,
-                "upgrade_url": "https://andolabs.io/enterprise"
+                "upgrade_url": "https://andolabs.org/enterprise"
             })
         })
         .collect();

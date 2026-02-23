@@ -1,3 +1,4 @@
+use crate::persist;
 use crate::server::AdminState;
 use ando_core::upstream::Upstream;
 use axum::extract::{Path, State};
@@ -22,6 +23,7 @@ pub async fn put_upstream(
 
     let uid = upstream.id.clone().unwrap_or(id.clone());
     state.cache.upstreams.insert(uid.clone(), upstream);
+    persist::save_state(&state);
 
     (StatusCode::OK, Json(json!({"id": uid, "status": "created"})))
 }
@@ -41,6 +43,7 @@ pub async fn delete_upstream(
     Path(id): Path<String>,
 ) -> (StatusCode, Json<Value>) {
     state.cache.upstreams.remove(&id);
+    persist::save_state(&state);
     (StatusCode::OK, Json(json!({"deleted": true})))
 }
 

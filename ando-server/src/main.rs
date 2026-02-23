@@ -34,6 +34,11 @@ struct Cli {
     /// Log level
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Path to the JSON state file used for persistence (routes, upstreams, consumers).
+    /// Data written via the Admin API is saved here and reloaded on restart.
+    #[arg(long, default_value = "data/ando-state.json")]
+    state_file: PathBuf,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -73,8 +78,12 @@ fn main() -> anyhow::Result<()> {
     // ── Config cache ──
     let cache = ConfigCache::new();
 
-    // ── Initial router (empty) ──
-    let router = Router::build(vec![], 0)?;
+    // ── Restore persisted state (routes / upstreams / consumers) ──
+    ando_admin::persist::load_state(&cli.state_file, &cache);
+
+    // ── Initial router (built from persisted routes, or empty) ──
+    let initial_routes = cache.all_routes();
+    let router = Router::build(initial_routes, 0)?;
 
     // ── Shared state ──
     let shared = SharedState::new(router, registry, cache.clone(), config.clone());
@@ -86,6 +95,7 @@ fn main() -> anyhow::Result<()> {
         router_swap: Arc::clone(&shared.router),
         plugin_registry: Arc::clone(&shared.plugin_registry),
         config_changed: config_changed.clone(),
+        state_file: Some(cli.state_file.clone()),
     });
 
     // ── Start admin API on a dedicated tokio thread ──

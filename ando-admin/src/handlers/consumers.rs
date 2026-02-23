@@ -1,3 +1,4 @@
+use crate::persist;
 use crate::server::AdminState;
 use ando_core::consumer::Consumer;
 use axum::extract::{Path, State};
@@ -25,6 +26,7 @@ pub async fn put_consumer(
         .consumers
         .insert(consumer.username.clone(), consumer.clone());
     state.cache.rebuild_consumer_key_index();
+    persist::save_state(&state);
 
     (
         StatusCode::OK,
@@ -51,6 +53,7 @@ pub async fn delete_consumer(
 ) -> (StatusCode, Json<Value>) {
     state.cache.consumers.remove(&username);
     state.cache.rebuild_consumer_key_index();
+    persist::save_state(&state);
     (StatusCode::OK, Json(json!({"deleted": true})))
 }
 
