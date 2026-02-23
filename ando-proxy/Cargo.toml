@@ -27,3 +27,6 @@ crossbeam-channel = { workspace = true }
 itoa = { workspace = true }
 prometheus = { workspace = true }
 matchit = { workspace = true }
+
+[dev-dependencies]
+ando-plugins = { path = "../ando-plugins" }

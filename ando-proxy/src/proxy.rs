@@ -288,6 +288,7 @@ impl ProxyWorker {
 
 // ── Request result ────────────────────────────────────────────
 
+#[derive(Debug)]
 pub enum RequestResult {
     /// Proxy to upstream at this address.
     Proxy { upstream_addr: String },
@@ -442,5 +443,307 @@ pub fn status_text(status: u16) -> &'static str {
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
         _ => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ando_core::config::GatewayConfig;
+    use ando_core::consumer::Consumer;
+    use ando_core::route::Route;
+    use ando_core::router::Router;
+    use ando_plugin::registry::PluginRegistry;
+    use ando_store::cache::ConfigCache;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    fn make_worker_with_registry(routes: Vec<Route>, registry: PluginRegistry, cache: ConfigCache) -> ProxyWorker {
+        let router = Arc::new(Router::build(routes, 1).unwrap());
+        let config = Arc::new(GatewayConfig::default());
+        ProxyWorker::new(router, Arc::new(registry), cache, config)
+    }
+
+    fn make_worker(routes: Vec<Route>) -> ProxyWorker {
+        make_worker_with_registry(routes, PluginRegistry::new(), ConfigCache::new())
+    }
+
+    fn simple_route(id: &str, uri: &str, upstream_addr: &str) -> Route {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "uri": uri,
+            "status": 1,
+            "upstream": { "nodes": { upstream_addr: 1 }, "type": "roundrobin" }
+        })).unwrap()
+    }
+
+    fn route_with_key_auth(id: &str, uri: &str, upstream_addr: &str) -> Route {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "uri": uri,
+            "status": 1,
+            "plugins": { "key-auth": {} },
+            "upstream": { "nodes": { upstream_addr: 1 }, "type": "roundrobin" }
+        })).unwrap()
+    }
+
+    // ── status_text ──────────────────────────────────────────────
+
+    #[test]
+    fn status_text_known_codes() {
+        assert_eq!(status_text(200), "OK");
+        assert_eq!(status_text(201), "Created");
+        assert_eq!(status_text(204), "No Content");
+        assert_eq!(status_text(301), "Moved Permanently");
+        assert_eq!(status_text(302), "Found");
+        assert_eq!(status_text(400), "Bad Request");
+        assert_eq!(status_text(401), "Unauthorized");
+        assert_eq!(status_text(403), "Forbidden");
+        assert_eq!(status_text(404), "Not Found");
+        assert_eq!(status_text(429), "Too Many Requests");
+        assert_eq!(status_text(500), "Internal Server Error");
+        assert_eq!(status_text(502), "Bad Gateway");
+        assert_eq!(status_text(503), "Service Unavailable");
+        assert_eq!(status_text(504), "Gateway Timeout");
+    }
+
+    #[test]
+    fn status_text_unknown_code_returns_unknown() {
+        assert_eq!(status_text(999), "Unknown");
+        assert_eq!(status_text(0), "Unknown");
+    }
+
+    // ── build_response ───────────────────────────────────────────
+
+    #[test]
+    fn build_response_status_line_and_body() {
+        let mut buf = Vec::new();
+        build_response(&mut buf, 200, &[], b"hello");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.starts_with("HTTP/1.1 200 OK\r\n"), "must start with status line");
+        assert!(text.contains("content-length: 5\r\n"), "must contain correct content-length");
+        assert!(text.contains("connection: keep-alive\r\n"), "must contain keep-alive");
+        assert!(text.ends_with("hello"), "body must be at end");
+    }
+
+    #[test]
+    fn build_response_empty_body() {
+        let mut buf = Vec::new();
+        build_response(&mut buf, 204, &[], b"");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.starts_with("HTTP/1.1 204 No Content\r\n"));
+        assert!(text.contains("content-length: 0\r\n"));
+    }
+
+    #[test]
+    fn build_response_custom_headers() {
+        let mut buf = Vec::new();
+        let headers = vec![
+            ("x-custom".to_string(), "value1".to_string()),
+            ("content-type".to_string(), "application/json".to_string()),
+        ];
+        build_response(&mut buf, 200, &headers, b"{}");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("x-custom: value1\r\n"));
+        assert!(text.contains("content-type: application/json\r\n"));
+    }
+
+    #[test]
+    fn build_response_clears_buffer_first() {
+        let mut buf = b"stale data".to_vec();
+        build_response(&mut buf, 200, &[], b"fresh");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(!text.contains("stale data"));
+        assert!(text.ends_with("fresh"));
+    }
+
+    // ── build_upstream_request ───────────────────────────────────
+
+    #[test]
+    fn build_upstream_request_basic_format() {
+        let mut buf = Vec::new();
+        build_upstream_request(&mut buf, "GET", "/api", &[], b"");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.starts_with("GET /api HTTP/1.1\r\n"));
+        assert!(text.contains("connection: keep-alive\r\n"));
+    }
+
+    #[test]
+    fn build_upstream_request_filters_hop_by_hop_headers() {
+        let mut buf = Vec::new();
+        let headers = [
+            ("connection", "close"),
+            ("keep-alive", "timeout=5"),
+            ("transfer-encoding", "chunked"),
+            ("upgrade", "websocket"),
+            ("x-forwarded-for", "1.2.3.4"),
+        ];
+        build_upstream_request(&mut buf, "POST", "/", &headers, b"");
+        let text = String::from_utf8(buf).unwrap();
+        // hop-by-hop must be removed
+        assert!(!text.contains("transfer-encoding: chunked"));
+        assert!(!text.contains("upgrade: websocket"));
+        assert!(!text.contains("keep-alive: timeout=5"));
+        // regular headers must pass through
+        assert!(text.contains("x-forwarded-for: 1.2.3.4\r\n"));
+    }
+
+    #[test]
+    fn build_upstream_request_adds_content_length_for_body() {
+        let mut buf = Vec::new();
+        build_upstream_request(&mut buf, "POST", "/", &[], b"body-data");
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("content-length: 9\r\n"));
+        assert!(text.ends_with("body-data"));
+    }
+
+    // ── handle_request — route matching ─────────────────────────
+
+    #[test]
+    fn handle_request_unmatched_path_returns_404() {
+        let mut w = make_worker(vec![simple_route("r1", "/api", "127.0.0.1:8080")]);
+        let result = w.handle_request("GET", "/not-found", None, &[], "1.2.3.4");
+        assert!(matches!(result, RequestResult::Static(RESP_404)));
+    }
+
+    #[test]
+    fn handle_request_fast_path_proxy() {
+        let mut w = make_worker(vec![simple_route("r1", "/api", "127.0.0.1:8080")]);
+        let result = w.handle_request("GET", "/api", None, &[], "1.2.3.4");
+        match result {
+            RequestResult::Proxy { upstream_addr } => {
+                assert_eq!(upstream_addr, "127.0.0.1:8080");
+            }
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn handle_request_disabled_route_returns_404() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/disabled", "status": 0,
+            "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+        let result = w.handle_request("GET", "/disabled", None, &[], "1.2.3.4");
+        assert!(matches!(result, RequestResult::Static(RESP_404)));
+    }
+
+    #[test]
+    fn handle_request_wildcard_path_matches_subpaths() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/api/*", "status": 1,
+            "methods": ["GET"],
+            "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+        let result = w.handle_request("GET", "/api/users/list", None, &[], "1.2.3.4");
+        assert!(matches!(result, RequestResult::Proxy { .. }));
+    }
+
+    #[test]
+    fn handle_request_method_specific_route() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/only-get",
+            "methods": ["GET"], "status": 1,
+            "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+        assert!(matches!(w.handle_request("GET", "/only-get", None, &[], "x"), RequestResult::Proxy { .. }));
+        assert!(matches!(w.handle_request("POST", "/only-get", None, &[], "x"), RequestResult::Static(RESP_404)));
+    }
+
+    // ── handle_request — key-auth plugin ────────────────────────
+
+    #[test]
+    fn handle_request_key_auth_missing_key_returns_plugin_401() {
+        let mut registry = PluginRegistry::new();
+        ando_plugins::register_all(&mut registry);
+        let route = route_with_key_auth("r1", "/secure", "127.0.0.1:8080");
+        let mut w = make_worker_with_registry(vec![route], registry, ConfigCache::new());
+
+        // No apikey header → key-auth plugin returns 401
+        let result = w.handle_request("GET", "/secure", None, &[], "1.2.3.4");
+        match result {
+            RequestResult::PluginResponse { status, .. } => assert_eq!(status, 401),
+            other => panic!("Expected PluginResponse 401, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn handle_request_key_auth_invalid_key_returns_static_401() {
+        let mut registry = PluginRegistry::new();
+        ando_plugins::register_all(&mut registry);
+        let route = route_with_key_auth("r1", "/secure", "127.0.0.1:8080");
+        // Empty consumer store — key present in header but no consumer has it
+        let mut w = make_worker_with_registry(vec![route], registry, ConfigCache::new());
+
+        let result = w.handle_request("GET", "/secure", None, &[("apikey", "bad-key")], "1.2.3.4");
+        assert!(matches!(result, RequestResult::Static(RESP_401_INVALID)),
+            "wrong consumer key must return RESP_401_INVALID");
+    }
+
+    #[test]
+    fn handle_request_key_auth_valid_key_proxies_request() {
+        let mut registry = PluginRegistry::new();
+        ando_plugins::register_all(&mut registry);
+        let route = route_with_key_auth("r1", "/secure", "127.0.0.1:8080");
+
+        // Add consumer with a known key
+        let cache = ConfigCache::new();
+        let mut plugins: HashMap<String, serde_json::Value> = HashMap::new();
+        plugins.insert("key-auth".to_string(), serde_json::json!({ "key": "valid-key-123" }));
+        cache.consumers.insert("alice".to_string(), Consumer {
+            username: "alice".to_string(),
+            plugins,
+            desc: None,
+            labels: HashMap::new(),
+        });
+        cache.rebuild_consumer_key_index();
+
+        let mut w = make_worker_with_registry(vec![route], registry, cache);
+        let result = w.handle_request("GET", "/secure", None, &[("apikey", "valid-key-123")], "1.2.3.4");
+        assert!(matches!(result, RequestResult::Proxy { .. }),
+            "valid consumer key must proxy the request");
+    }
+
+    // ── maybe_update_router ──────────────────────────────────────
+
+    #[test]
+    fn maybe_update_router_no_op_on_same_version() {
+        let routes = vec![simple_route("r1", "/a", "127.0.0.1:8080")];
+        let mut w = make_worker(routes);
+        let old_version = w.router_version;
+        let same_router = Arc::new(Router::build(vec![], old_version).unwrap());
+        w.maybe_update_router(same_router);
+        assert_eq!(w.router_version, old_version);
+    }
+
+    #[test]
+    fn maybe_update_router_updates_on_new_version() {
+        let routes = vec![simple_route("r1", "/a", "127.0.0.1:8080")];
+        let mut w = make_worker(routes);
+        let old_version = w.router_version;
+        let new_router = Arc::new(Router::build(
+            vec![simple_route("r2", "/b", "127.0.0.1:9090")],
+            old_version + 1,
+        ).unwrap());
+        w.maybe_update_router(Arc::clone(&new_router));
+        assert_eq!(w.router_version, old_version + 1);
+        // New route should now match
+        let result = w.handle_request("GET", "/b", None, &[], "x");
+        assert!(matches!(result, RequestResult::Proxy { .. }));
+    }
+
+    // ── upstream_addresses ───────────────────────────────────────
+
+    #[test]
+    fn upstream_addresses_returns_inline_route_nodes() {
+        let route = simple_route("r1", "/api", "10.0.0.1:8080");
+        let w = make_worker(vec![route]);
+        let addrs = w.upstream_addresses();
+        assert!(addrs.contains(&"10.0.0.1:8080".to_string()));
     }
 }
