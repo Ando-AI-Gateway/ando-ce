@@ -7,7 +7,7 @@ use std::str::FromStr;
 /// IP restriction plugin — allowlist/denylist based access control.
 pub struct IpRestrictionPlugin;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct IpRestrictionConfig {
     /// If non-empty, only these CIDRs/IPs are allowed.
     #[serde(default)]
@@ -248,11 +248,5 @@ mod tests {
             instance.access(&mut make_ctx("10.1.2.3")),
             PluginResult::Response { status: 403, .. }
         ));
-    }
-}
-
-impl Default for IpRestrictionConfig {
-    fn default() -> Self {
-        Self { allowlist: vec![], denylist: vec![] }
     }
 }

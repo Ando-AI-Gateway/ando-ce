@@ -164,7 +164,7 @@ mod tests {
     fn test_hide_credentials_removes_header() {
         let mut ctx = make_ctx(vec![("apikey", "my-key")]);
         inst("apikey", true).access(&mut ctx);
-        assert!(ctx.request_headers.get("apikey").is_none(), "header must be removed");
+        assert!(!ctx.request_headers.contains_key("apikey"), "header must be removed");
     }
 
     #[test]
@@ -241,6 +241,6 @@ mod tests {
         let result = i.access(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));
         // header removed because hide_credentials = true
-        assert!(ctx.request_headers.get("authorization").is_none());
+        assert!(!ctx.request_headers.contains_key("authorization"));
     }
 }

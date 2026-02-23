@@ -43,11 +43,11 @@ impl ConfigCache {
         self.consumer_key_index.clear();
         for entry in self.consumers.iter() {
             let consumer = entry.value();
-            if let Some(key_auth_config) = consumer.plugins.get("key-auth") {
-                if let Some(key) = key_auth_config.get("key").and_then(|v| v.as_str()) {
-                    self.consumer_key_index
-                        .insert(key.to_string(), consumer.username.clone());
-                }
+            if let Some(key_auth_config) = consumer.plugins.get("key-auth")
+                && let Some(key) = key_auth_config.get("key").and_then(|v| v.as_str())
+            {
+                self.consumer_key_index
+                    .insert(key.to_string(), consumer.username.clone());
             }
         }
     }

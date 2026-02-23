@@ -66,10 +66,10 @@ impl EtcdStore {
             .get(prefix.as_bytes(), Some(etcd_client::GetOptions::new().with_prefix()))
             .await?;
         for kv in resp.kvs() {
-            if let Ok(ups) = serde_json::from_slice::<ando_core::upstream::Upstream>(kv.value()) {
-                if let Some(ref id) = ups.id {
-                    cache.upstreams.insert(id.clone(), ups);
-                }
+            if let Ok(ups) = serde_json::from_slice::<ando_core::upstream::Upstream>(kv.value())
+                && let Some(ref id) = ups.id
+            {
+                cache.upstreams.insert(id.clone(), ups);
             }
         }
         Ok(())

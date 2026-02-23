@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Top-level gateway configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GatewayConfig {
     #[serde(default)]
     pub proxy: ProxyConfig,
@@ -73,7 +73,7 @@ pub struct EtcdConfig {
 }
 
 /// Observability settings — all optional, disabled by default.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ObservabilityConfig {
     #[serde(default)]
     pub victoria_metrics: VictoriaMetricsConfig,
@@ -136,17 +136,6 @@ fn default_metrics_path() -> String { "/metrics".into() }
 
 // ── Impls ─────────────────────────────────────────────────────
 
-impl Default for GatewayConfig {
-    fn default() -> Self {
-        Self {
-            proxy: ProxyConfig::default(),
-            admin: AdminConfig::default(),
-            deployment: DeploymentConfig::default(),
-            observability: ObservabilityConfig::default(),
-        }
-    }
-}
-
 impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
@@ -176,16 +165,6 @@ impl Default for DeploymentConfig {
         Self {
             mode: DeploymentMode::Standalone,
             etcd: None,
-        }
-    }
-}
-
-impl Default for ObservabilityConfig {
-    fn default() -> Self {
-        Self {
-            victoria_metrics: VictoriaMetricsConfig::default(),
-            victoria_logs: VictoriaLogsConfig::default(),
-            prometheus: PrometheusConfig::default(),
         }
     }
 }

@@ -30,6 +30,7 @@ impl VictoriaLogsExporter {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub fn access_log(
         &self,
         route_id: &str,

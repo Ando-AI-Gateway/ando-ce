@@ -189,12 +189,12 @@ impl ProxyWorker {
         }
 
         // Consumer validation (key-auth)
-        if pipeline.has_auth_plugins() {
-            if let Some(key) = ctx.vars.get("_key_auth_key").and_then(|v| v.as_str()) {
-                match self.consumer_keys.get(key) {
-                    Some(username) => ctx.consumer = Some(username.clone()),
-                    None => return RequestResult::Static(RESP_401_INVALID),
-                }
+        if pipeline.has_auth_plugins()
+            && let Some(key) = ctx.vars.get("_key_auth_key").and_then(|v| v.as_str())
+        {
+            match self.consumer_keys.get(key) {
+                Some(username) => ctx.consumer = Some(username.clone()),
+                None => return RequestResult::Static(RESP_401_INVALID),
             }
         }
 
@@ -215,32 +215,30 @@ impl ProxyWorker {
 
     /// Resolve upstream address from local snapshot (never DashMap).
     fn resolve_upstream(&self, route: &Route) -> String {
-        if let Some(ref ups) = route.upstream {
-            if let Some(addr) = ups.first_node() {
+        if let Some(ref ups) = route.upstream
+            && let Some(addr) = ups.first_node()
+        {
+            return addr.to_string();
+        }
+        if let Some(ref id) = route.upstream_id
+            && let Some(ups) = self.upstreams.get(id)
+            && let Some(addr) = ups.first_node()
+        {
+            return addr.to_string();
+        }
+        if let Some(ref svc_id) = route.service_id
+            && let Some(svc) = self.services.get(svc_id)
+        {
+            if let Some(ref ups) = svc.upstream
+                && let Some(addr) = ups.first_node()
+            {
                 return addr.to_string();
             }
-        }
-        if let Some(ref id) = route.upstream_id {
-            if let Some(ups) = self.upstreams.get(id) {
-                if let Some(addr) = ups.first_node() {
-                    return addr.to_string();
-                }
-            }
-        }
-        if let Some(ref svc_id) = route.service_id {
-            if let Some(svc) = self.services.get(svc_id) {
-                if let Some(ref ups) = svc.upstream {
-                    if let Some(addr) = ups.first_node() {
-                        return addr.to_string();
-                    }
-                }
-                if let Some(ref ups_id) = svc.upstream_id {
-                    if let Some(ups) = self.upstreams.get(ups_id) {
-                        if let Some(addr) = ups.first_node() {
-                            return addr.to_string();
-                        }
-                    }
-                }
+            if let Some(ref ups_id) = svc.upstream_id
+                && let Some(ups) = self.upstreams.get(ups_id)
+                && let Some(addr) = ups.first_node()
+            {
+                return addr.to_string();
             }
         }
         "127.0.0.1:80".to_string()
@@ -256,11 +254,11 @@ impl ProxyWorker {
         let mut has_auth = false;
 
         if let Some(route) = route {
-            if let Some(ref svc_id) = route.service_id {
-                if let Some(svc) = self.services.get(svc_id) {
-                    for (name, config) in &svc.plugins {
-                        merged.insert(name.clone(), config.clone());
-                    }
+            if let Some(ref svc_id) = route.service_id
+                && let Some(svc) = self.services.get(svc_id)
+            {
+                for (name, config) in &svc.plugins {
+                    merged.insert(name.clone(), config.clone());
                 }
             }
             for (name, config) in &route.plugins {
@@ -273,10 +271,10 @@ impl ProxyWorker {
             if matches!(name.as_str(), "key-auth" | "jwt-auth" | "basic-auth") {
                 has_auth = true;
             }
-            if let Some(factory) = self.plugin_registry.get(name) {
-                if let Ok(inst) = factory.configure(config) {
-                    instances.push(Arc::from(inst));
-                }
+            if let Some(factory) = self.plugin_registry.get(name)
+                && let Ok(inst) = factory.configure(config)
+            {
+                instances.push(Arc::from(inst));
             }
         }
 

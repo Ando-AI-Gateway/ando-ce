@@ -43,7 +43,7 @@ impl Router {
                     let method_upper = method.to_uppercase();
                     let tree = method_trees
                         .entry(method_upper)
-                        .or_insert_with(matchit::Router::new);
+                        .or_default();
                     if let Err(e) = tree.insert(&path, route.id.clone()) {
                         tracing::warn!(route_id = %route.id, method = %method, path = %path, "Failed to insert route: {e}");
                     }
@@ -72,14 +72,14 @@ impl Router {
     #[inline]
     pub fn match_route(&self, method: &str, path: &str, host: Option<&str>) -> Option<&Route> {
         // Try method-specific tree first
-        if let Some(tree) = self.method_trees.get(method) {
-            if let Ok(matched) = tree.at(path) {
-                let route_id = matched.value.as_str();
-                if let Some(route) = self.routes.get(route_id) {
-                    if check_host(route, host) {
-                        return Some(route);
-                    }
-                }
+        if let Some(tree) = self.method_trees.get(method)
+            && let Ok(matched) = tree.at(path)
+        {
+            let route_id = matched.value.as_str();
+            if let Some(route) = self.routes.get(route_id)
+                && check_host(route, host)
+            {
+                return Some(route);
             }
         }
 
