@@ -41,31 +41,28 @@ Built on [ByteDance monoio](https://github.com/bytedance/monoio) — io_uring on
 
 ```
 ando-ce/
-├── benchmark/    # Benchmark: Ando CE vs APISIX vs KrakenD vs Kong vs Tyk
-│   ├── bench.sh
-│   ├── docker-compose.yml
-│   ├── ando-ce-bench.yaml
-│   ├── apisix-config.yaml
-│   ├── Dockerfile.echo
-│   ├── Dockerfile.wrk
-│   └── results/
-│
-└── v2/           # Ando CE core — monoio thread-per-core engine
-    ├── Cargo.toml
-    ├── ando-core/
-    ├── ando-proxy/
-    ├── ando-plugin/
-    ├── ando-plugins/
-    ├── ando-store/
-    ├── ando-observability/
-    ├── ando-admin/
-    └── ando-server/
+├── Cargo.toml
+├── Dockerfile
+├── docker-compose.yml
+├── config/
+├── ando-core/
+├── ando-proxy/
+├── ando-plugin/
+├── ando-plugins/
+├── ando-store/
+├── ando-observability/
+├── ando-admin/
+├── ando-server/
+└── benchmark/    # Benchmark: Ando CE vs APISIX vs KrakenD vs Kong vs Tyk
+    ├── bench.sh
+    ├── docker-compose.yml
+    ├── ando-ce-bench.yaml
+    └── results/
 ```
 
 ## Quick Start
 
 ```bash
-cd v2
 cargo build --release
 ./target/release/ando-server -c config/ando.yaml
 ```
@@ -73,7 +70,6 @@ cargo build --release
 ### Docker
 
 ```bash
-cd v2
 docker build -t ando-ce:latest .
 docker run -p 8000:8000 -p 9180:9180 ando-ce:latest
 ```

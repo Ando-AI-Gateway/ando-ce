@@ -31,7 +31,7 @@ services:
   # ── Ando CE (monoio / thread-per-core) ──────────────────────
   ando-ce:
     build:
-      context: ../v2
+      context: ..
       dockerfile: Dockerfile
     volumes:
       - ./ando-ce-bench.yaml:/etc/ando/ando.yaml:ro
