@@ -1,4 +1,4 @@
-# Ando V2 - Zero-Overhead Proxy Engine
+# Ando CE - Zero-Overhead Proxy Engine
 
 A high-performance API gateway and reverse proxy built with **monoio** thread-per-core architecture, achieving near-native performance by eliminating async overhead and shared-state contention.
 
@@ -16,16 +16,11 @@ A high-performance API gateway and reverse proxy built with **monoio** thread-pe
 - **Connection Handler**: HTTP/1.1 with httparse zero-copy parsing, keepalive pooling
 - **Upstream Proxy**: Direct TcpStream without buffering (only reads data on demand)
 
-### Why V2 Exists
-**V1 (Pingora/Tokio)** bottlenecks on macOS Docker:
-- Tokio task scheduler: cross-core work-stealing every context switch
-- Shared DashMap for route cache: cache-line contention at scale
-- nginx C event loop ceiling: ~5-10% of native performance on VM
-
-**V2 solution:**
-- Eliminate cross-core coordination → eliminate scheduler overhead
-- Thread-local state → no contention, no DashMap atomics
-- Result: 2-5x throughput on same hardware (depending on config)
+### Why Thread-Per-Core
+Eliminating cross-core coordination removes scheduler overhead and contention:
+- Thread-local state → no locks, no DashMap atomics on hot path
+- Frozen immutable router swapped via `ArcSwap` (single atomic load per request)
+- Result: 2-5× throughput vs traditional multi-threaded gateways on the same hardware
 
 ## Building
 
@@ -35,27 +30,24 @@ A high-performance API gateway and reverse proxy built with **monoio** thread-pe
 
 ### From Source
 ```bash
-cd v2
 cargo build --release
 ```
 
 ### Docker
 ```bash
-docker build -t ando-v2:latest .
+docker build -t ando-ce:latest .
 ```
 
 ## Running
 
 ### Basic Startup
 ```bash
-cd v2
 ./target/release/ando-server --config config/ando.yaml
 ```
 
-### Docker Compose (with benchmark)
+### Docker Compose
 ```bash
-cd ../benchmark
-docker-compose up ando-v2
+docker-compose up ando
 ```
 
 ### Configuration
@@ -99,7 +91,7 @@ observability:
 
 ## Admin API
 
-Both **v1 (Pingora)** and **v2 (monoio)** implement APISIX-compatible admin APIs.
+Both **Ando CE** and **Ando EE** implement APISIX-compatible admin APIs.
 
 ### Endpoints
 ```bash
@@ -157,20 +149,20 @@ curl http://localhost:8000/api/test \
 
 ## Benchmarking
 
-Compare v2, v1, and APISIX side-by-side:
+Compare Ando CE against other gateways side-by-side:
 ```bash
-cd ../benchmark
+cd benchmark
 ./bench.sh
 ```
 
 Generates markdown report with:
 - **Baseline**: Raw echo backend (no proxy)
-- **Plain**: Proxy without plugins (v1, v2, APISIX)
-- **Auth**: Key-auth plugin verification (v1, v2, APISIX)
+- **Plain**: Proxy without plugins
+- **Auth**: Key-auth plugin verification
 - **Stress**: High-concurrency test (500 connections)
 - **Ramp**: Throughput sweep 10→1000 concurrent connections
 
-Results: `benchmark/results/latest_results.md` with Mermaid charts and 3-way comparison.
+Results: `benchmark/results/latest_results.md` with Mermaid charts.
 
 ## Development
 
@@ -222,8 +214,7 @@ cargo test           # Run all tests
 
 ### Expected Throughput (macOS Docker / 4 cores)
 - **Baseline (echo only)**: ~20k req/s (hardware ceiling)
-- **v1 (Pingora/Tokio)**: ~3-5k req/s
-- **v2 (monoio/thread-per-core)**: ~8-12k req/s (2-3x v1)
+- **Ando CE (monoio/thread-per-core)**: ~8-12k req/s
 - **Native nginx**: ~18-20k req/s
 
 ### Why the gap?
@@ -253,6 +244,6 @@ cargo test           # Run all tests
 - Profile with `flamegraph` or `perf`
 
 ## See Also
-- [V1 Documentation](../v1/README.md)
-- [Main Architecture](../ARCHITECTURE.md)
+- [Architecture](../ARCHITECTURE.md)
 - [Benchmark Results](../benchmark/)
+- [Ando Enterprise Edition](https://andogateway.io/enterprise)

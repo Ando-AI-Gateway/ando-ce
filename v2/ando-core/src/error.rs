@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-/// Unified error type for Ando v2.
+/// Unified error type for Ando CE.
 #[derive(Error, Debug)]
 pub enum AndoError {
     #[error("Route not found: {0}")]

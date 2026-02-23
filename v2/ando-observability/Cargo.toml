@@ -3,7 +3,7 @@ name = "ando-observability"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Metrics & logging for Ando v2 gateway"
+description = "Metrics & logging for Ando CE gateway"
 
 [dependencies]
 ando-core = { path = "../ando-core" }

@@ -1,5 +1,5 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Ando v2 — Production Docker Compose
+#  Ando CE — Production Docker Compose
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #
 # Usage:
@@ -19,7 +19,7 @@
 
 services:
 
-  # ── Ando v2 Gateway ──────────────────────────────────────────
+  # ── Ando CE Gateway ──────────────────────────────────────────
   ando:
     build:
       context: .

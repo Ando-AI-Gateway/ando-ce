@@ -3,7 +3,7 @@ name = "ando-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "etcd storage + in-memory cache for Ando v2 gateway"
+description = "etcd storage + in-memory cache for Ando CE gateway"
 
 [dependencies]
 ando-core = { path = "../ando-core" }

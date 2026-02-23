@@ -1,5 +1,5 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Ando v2 — Multi-stage production build
+#  Ando CE — Multi-stage production build
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Build: docker build -t ando-v2:latest .
 # Run:   docker run -p 9080:9080 -p 9180:9180 ando-v2:latest

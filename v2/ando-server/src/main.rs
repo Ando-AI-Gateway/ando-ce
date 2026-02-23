@@ -1,5 +1,5 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//  Ando v2 — Zero-Overhead Enterprise API Gateway
+//  Ando CE — Zero-Overhead API Gateway
 //
 //  Architecture: monoio thread-per-core + shared-nothing data plane
 //  Admin API:    axum on dedicated tokio thread
@@ -25,7 +25,7 @@ use tracing::info;
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 #[derive(Parser, Debug)]
-#[command(name = "ando", version, about = "Ando v2 — Zero-Overhead API Gateway")]
+#[command(name = "ando", version, about = "Ando CE — Zero-Overhead API Gateway")]
 struct Cli {
     /// Path to configuration file
     #[arg(short, long, default_value = "/etc/ando/ando.yaml")]
@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
-        "Ando v2 starting — monoio thread-per-core engine"
+        "Ando CE starting — monoio thread-per-core engine"
     );
 
     // ── Config ──
@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
         workers = num_workers,
         proxy_addr = %config.proxy.http_addr,
         admin_addr = %config.admin.addr,
-        "Ando v2 is ready — serving traffic"
+        "Ando CE is ready — serving traffic"
     );
 
     // ── Graceful shutdown: wait for SIGTERM/SIGINT ──
@@ -137,7 +137,7 @@ fn main() -> anyhow::Result<()> {
     // Future improvement: send shutdown notification to each worker.
     drop(worker_handles);
 
-    info!("Ando v2 stopped");
+    info!("Ando CE stopped");
     Ok(())
 }
 

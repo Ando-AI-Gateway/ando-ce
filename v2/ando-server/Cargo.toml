@@ -3,7 +3,7 @@ name = "ando-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Main binary for Ando v2 gateway"
+description = "Main binary for Ando CE gateway"
 
 [dependencies]
 ando-core = { path = "../ando-core" }

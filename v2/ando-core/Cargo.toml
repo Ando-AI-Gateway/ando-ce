@@ -3,7 +3,7 @@ name = "ando-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Core types, config, router for Ando v2 gateway"
+description = "Core types, config, router for Ando CE gateway"
 
 [dependencies]
 serde = { workspace = true }

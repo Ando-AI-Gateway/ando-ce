@@ -16,7 +16,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/kowito/ando"
-description = "Ando v2 — Zero-overhead API Gateway (monoio thread-per-core)"
+description = "Ando CE — Zero-overhead API Gateway (monoio thread-per-core)"
 
 [workspace.dependencies]
 # ── Runtime: monoio (thread-per-core, io_uring on Linux, kqueue on macOS) ──

@@ -3,7 +3,7 @@ name = "ando-proxy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "monoio thread-per-core proxy engine for Ando v2"
+description = "monoio thread-per-core proxy engine for Ando CE"
 
 [dependencies]
 ando-core = { path = "../ando-core" }

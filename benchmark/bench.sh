@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# bench.sh — Ando v1 vs Ando v2 vs APISIX vs KrakenD vs Kong vs Tyk
+# bench.sh — Ando CE vs APISIX vs KrakenD vs Kong vs Tyk
 # ============================================================
 # Usage:
 #   ./benchmark/bench.sh [baseline|plain|auth|stress|ramp|all]
@@ -104,57 +104,32 @@ dcurl() {
 
 # ── Setup routes on all three gateways ───────────────────────
 setup_routes() {
-  header "Configuring Ando v1 + Ando v2 + APISIX routes"
+  header "Configuring Ando CE + APISIX routes"
 
-  # ── Ando v1 ──────────────────────────────────────────────────
-  info "Setting up Ando v1 routes..."
-  dcurl -X PUT "http://ando-v1:9180/apisix/admin/upstreams/bench-echo" \
+  # ── Ando CE (monoio / thread-per-core) ───────────────────────
+  info "Setting up Ando CE routes..."
+  dcurl -X PUT "http://ando-ce:9180/apisix/admin/upstreams/bench-echo" \
     -H "Content-Type: application/json" \
     -d '{"id":"bench-echo","type":"roundrobin","nodes":{"echo:3000":1}}' \
     | grep -o '"id":"[^"]*"' || true
-  ok "  v1 upstream: bench-echo → echo:3000"
+  ok "  CE upstream: bench-echo → echo:3000"
 
-  dcurl -X PUT "http://ando-v1:9180/apisix/admin/routes/bench-plain" \
+  dcurl -X PUT "http://ando-ce:9180/apisix/admin/routes/bench-plain" \
     -H "Content-Type: application/json" \
     -d '{"id":"bench-plain","uri":"/bench/plain","methods":["GET"],"upstream_id":"bench-echo","plugins":{}}' \
     | grep -o '"id":"[^"]*"' || true
-  ok "  v1 route: /bench/plain (no auth)"
+  ok "  CE route: /bench/plain (no auth)"
 
-  dcurl -X PUT "http://ando-v1:9180/apisix/admin/consumers/bench-user" \
+  dcurl -X PUT "http://ando-ce:9180/apisix/admin/consumers/bench-user" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"bench-user\",\"plugins\":{\"key-auth\":{\"key\":\"${API_KEY}\"}}}" \
     | grep -o '"username":"[^"]*"' || true
 
-  dcurl -X PUT "http://ando-v1:9180/apisix/admin/routes/bench-auth" \
+  dcurl -X PUT "http://ando-ce:9180/apisix/admin/routes/bench-auth" \
     -H "Content-Type: application/json" \
     -d '{"id":"bench-auth","uri":"/bench/auth","methods":["GET"],"upstream_id":"bench-echo","plugins":{"key-auth":{}}}' \
     | grep -o '"id":"[^"]*"' || true
-  ok "  v1 route: /bench/auth (key-auth)"
-
-  # ── Ando v2 ──────────────────────────────────────────────────
-  info "Setting up Ando v2 routes..."
-  dcurl -X PUT "http://ando-v2:9180/apisix/admin/upstreams/bench-echo" \
-    -H "Content-Type: application/json" \
-    -d '{"id":"bench-echo","type":"roundrobin","nodes":{"echo:3000":1}}' \
-    | grep -o '"id":"[^"]*"' || true
-  ok "  v2 upstream: bench-echo → echo:3000"
-
-  dcurl -X PUT "http://ando-v2:9180/apisix/admin/routes/bench-plain" \
-    -H "Content-Type: application/json" \
-    -d '{"id":"bench-plain","uri":"/bench/plain","methods":["GET"],"upstream_id":"bench-echo","plugins":{}}' \
-    | grep -o '"id":"[^"]*"' || true
-  ok "  v2 route: /bench/plain (no auth)"
-
-  dcurl -X PUT "http://ando-v2:9180/apisix/admin/consumers/bench-user" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"bench-user\",\"plugins\":{\"key-auth\":{\"key\":\"${API_KEY}\"}}}" \
-    | grep -o '"username":"[^"]*"' || true
-
-  dcurl -X PUT "http://ando-v2:9180/apisix/admin/routes/bench-auth" \
-    -H "Content-Type: application/json" \
-    -d '{"id":"bench-auth","uri":"/bench/auth","methods":["GET"],"upstream_id":"bench-echo","plugins":{"key-auth":{}}}' \
-    | grep -o '"id":"[^"]*"' || true
-  ok "  v2 route: /bench/auth (key-auth)"
+  ok "  CE route: /bench/auth (key-auth)"
 
   # ── APISIX ───────────────────────────────────────────────────
   info "Waiting for APISIX admin API..."
@@ -254,26 +229,22 @@ extract_p99() { grep "99%" "$1" | awk '{print $2}' | tail -1; }
 
 # ── Result variables ──────────────────────────────────────────
 BASELINE_RPS="" BASELINE_P99=""
-V1_PLAIN_RPS=""      V1_PLAIN_P99=""
-V2_PLAIN_RPS=""      V2_PLAIN_P99=""
+CE_PLAIN_RPS=""      CE_PLAIN_P99=""
 APISIX_PLAIN_RPS=""  APISIX_PLAIN_P99=""
 KRAKEND_PLAIN_RPS="" KRAKEND_PLAIN_P99=""
 KONG_PLAIN_RPS=""    KONG_PLAIN_P99=""
 TYK_PLAIN_RPS=""     TYK_PLAIN_P99=""
-V1_AUTH_RPS=""       V1_AUTH_P99=""
-V2_AUTH_RPS=""       V2_AUTH_P99=""
+CE_AUTH_RPS=""       CE_AUTH_P99=""
 APISIX_AUTH_RPS=""   APISIX_AUTH_P99=""
 KRAKEND_AUTH_RPS=""  KRAKEND_AUTH_P99=""
 KONG_AUTH_RPS=""     KONG_AUTH_P99=""
 TYK_AUTH_RPS=""      TYK_AUTH_P99=""
-V1_STRESS_RPS=""     V1_STRESS_P99=""
-V2_STRESS_RPS=""     V2_STRESS_P99=""
+CE_STRESS_RPS=""     CE_STRESS_P99=""
 APISIX_STRESS_RPS="" APISIX_STRESS_P99=""
 KRAKEND_STRESS_RPS="" KRAKEND_STRESS_P99=""
 KONG_STRESS_RPS=""   KONG_STRESS_P99=""
 TYK_STRESS_RPS=""    TYK_STRESS_P99=""
-RAMP_V1_RPS=()      RAMP_V1_P99=()
-RAMP_V2_RPS=()      RAMP_V2_P99=()
+RAMP_CE_RPS=()      RAMP_CE_P99=()
 RAMP_APISIX_RPS=()  RAMP_APISIX_P99=()
 RAMP_KRAKEND_RPS=() RAMP_KRAKEND_P99=()
 RAMP_KONG_RPS=()    RAMP_KONG_P99=()
@@ -295,17 +266,11 @@ bench_baseline() {
 bench_plain() {
   header "Scenario 1 — Plain Proxy (${CONNECTIONS} conns, ${DURATION})"
 
-  warmup "http://ando-v1:9080/bench/plain" "Ando v1"
-  run_wrk "http://ando-v1:9080/bench/plain" "v1_plain"
-  V1_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v1_plain.txt")
-  V1_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v1_plain.txt")
-  ok "Ando v1 plain: ${V1_PLAIN_RPS:-?} req/s  p99 ${V1_PLAIN_P99:-?}"
-
-  warmup "http://ando-v2:9080/bench/plain" "Ando v2"
-  run_wrk "http://ando-v2:9080/bench/plain" "v2_plain"
-  V2_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v2_plain.txt")
-  V2_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v2_plain.txt")
-  ok "Ando v2 plain: ${V2_PLAIN_RPS:-?} req/s  p99 ${V2_PLAIN_P99:-?}"
+  warmup "http://ando-ce:9080/bench/plain" "Ando CE"
+  run_wrk "http://ando-ce:9080/bench/plain" "ce_plain"
+  CE_PLAIN_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ce_plain.txt")
+  CE_PLAIN_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ce_plain.txt")
+  ok "Ando CE plain: ${CE_PLAIN_RPS:-?} req/s  p99 ${CE_PLAIN_P99:-?}"
 
   warmup "http://apisix:8080/bench/plain" "APISIX"
   run_wrk "http://apisix:8080/bench/plain" "apisix_plain"
@@ -335,17 +300,11 @@ bench_plain() {
 bench_auth() {
   header "Scenario 2 — Key-Auth Plugin (${CONNECTIONS} conns, ${DURATION})"
 
-  warmup "http://ando-v1:9080/bench/auth" "Ando v1 auth" "apikey: ${API_KEY}"
-  run_wrk "http://ando-v1:9080/bench/auth" "v1_auth" "apikey: ${API_KEY}"
-  V1_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v1_auth.txt")
-  V1_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v1_auth.txt")
-  ok "Ando v1 auth: ${V1_AUTH_RPS:-?} req/s  p99 ${V1_AUTH_P99:-?}"
-
-  warmup "http://ando-v2:9080/bench/auth" "Ando v2 auth" "apikey: ${API_KEY}"
-  run_wrk "http://ando-v2:9080/bench/auth" "v2_auth" "apikey: ${API_KEY}"
-  V2_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v2_auth.txt")
-  V2_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v2_auth.txt")
-  ok "Ando v2 auth: ${V2_AUTH_RPS:-?} req/s  p99 ${V2_AUTH_P99:-?}"
+  warmup "http://ando-ce:9080/bench/auth" "Ando CE auth" "apikey: ${API_KEY}"
+  run_wrk "http://ando-ce:9080/bench/auth" "ce_auth" "apikey: ${API_KEY}"
+  CE_AUTH_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ce_auth.txt")
+  CE_AUTH_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ce_auth.txt")
+  ok "Ando CE auth: ${CE_AUTH_RPS:-?} req/s  p99 ${CE_AUTH_P99:-?}"
 
   warmup "http://apisix:8080/bench/auth" "APISIX auth" "apikey: ${API_KEY}"
   run_wrk "http://apisix:8080/bench/auth" "apisix_auth" "apikey: ${API_KEY}"
@@ -376,17 +335,11 @@ bench_stress() {
   header "Scenario 3 — Stress Test (${STRESS_CONNECTIONS} conns, ${DURATION})"
   warn "High concurrency — some errors at saturation are expected."
 
-  warmup "http://ando-v1:9080/bench/plain" "Ando v1"
-  run_wrk "http://ando-v1:9080/bench/plain" "v1_stress" "" "${STRESS_CONNECTIONS}"
-  V1_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v1_stress.txt")
-  V1_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v1_stress.txt")
-  ok "Ando v1 stress: ${V1_STRESS_RPS:-?} req/s  p99 ${V1_STRESS_P99:-?}"
-
-  warmup "http://ando-v2:9080/bench/plain" "Ando v2"
-  run_wrk "http://ando-v2:9080/bench/plain" "v2_stress" "" "${STRESS_CONNECTIONS}"
-  V2_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_v2_stress.txt")
-  V2_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_v2_stress.txt")
-  ok "Ando v2 stress: ${V2_STRESS_RPS:-?} req/s  p99 ${V2_STRESS_P99:-?}"
+  warmup "http://ando-ce:9080/bench/plain" "Ando CE"
+  run_wrk "http://ando-ce:9080/bench/plain" "ce_stress" "" "${STRESS_CONNECTIONS}"
+  CE_STRESS_RPS=$(extract_rps "${RESULTS_DIR}/wrk_ce_stress.txt")
+  CE_STRESS_P99=$(extract_p99  "${RESULTS_DIR}/wrk_ce_stress.txt")
+  ok "Ando CE stress: ${CE_STRESS_RPS:-?} req/s  p99 ${CE_STRESS_P99:-?}"
 
   warmup "http://apisix:8080/bench/plain" "APISIX"
   run_wrk "http://apisix:8080/bench/plain" "apisix_stress" "" "${STRESS_CONNECTIONS}"
@@ -418,13 +371,12 @@ bench_ramp() {
   local RAMP_CONNS=(10 50 100 250 500 1000)
   local old_dur="${DURATION}"; DURATION="15s"
 
-  printf "\n%-8s %-14s %-14s %-14s %-14s %-14s %-14s\n" \
-    "Conns" "v1 req/s" "v2 req/s" "APISix req/s" "KrakenD req/s" "Kong req/s" "Tyk req/s"
+  printf "\n%-8s %-14s %-14s %-14s %-14s %-14s\n" \
+    "Conns" "CE req/s" "APISix req/s" "KrakenD req/s" "Kong req/s" "Tyk req/s"
   printf '%0.s─' {1..100}; echo ""
 
   for conns in "${RAMP_CONNS[@]}"; do
-    local v1o="${RESULTS_DIR}/wrk_ramp_v1_${conns}.txt"
-    local v2o="${RESULTS_DIR}/wrk_ramp_v2_${conns}.txt"
+    local ceo="${RESULTS_DIR}/wrk_ramp_ce_${conns}.txt"
     local co="${RESULTS_DIR}/wrk_ramp_apisix_${conns}.txt"
     local ko="${RESULTS_DIR}/wrk_ramp_krakend_${conns}.txt"
     local kgo="${RESULTS_DIR}/wrk_ramp_kong_${conns}.txt"
@@ -432,10 +384,7 @@ bench_ramp() {
 
     docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
       -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
-      http://ando-v1:9080/bench/plain > "${v1o}" 2>&1 || true
-    docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
-      -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
-      http://ando-v2:9080/bench/plain > "${v2o}" 2>&1 || true
+      http://ando-ce:9080/bench/plain > "${ceo}" 2>&1 || true
     docker run --rm --network "${BENCH_NET}" "${WRK_IMAGE}" \
       -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
       http://apisix:8080/bench/plain > "${co}" 2>&1 || true
@@ -449,23 +398,21 @@ bench_ramp() {
       -t "${THREADS}" -c "${conns}" -d "${DURATION}" --latency \
       http://tyk:8080/bench/plain > "${to}" 2>&1 || true
 
-    local v1r v1p v2r v2p cr cp kr kp kgr kgp tr tp
-    v1r=$(extract_rps "${v1o}" || echo 0); v1p=$(extract_p99 "${v1o}" || echo "N/A")
-    v2r=$(extract_rps "${v2o}" || echo 0); v2p=$(extract_p99 "${v2o}" || echo "N/A")
+    local cer cep cr cp kr kp kgr kgp tr tp
+    cer=$(extract_rps "${ceo}" || echo 0); cep=$(extract_p99 "${ceo}" || echo "N/A")
     cr=$(extract_rps  "${co}"  || echo 0); cp=$(extract_p99  "${co}"  || echo "N/A")
     kr=$(extract_rps  "${ko}"  || echo 0); kp=$(extract_p99  "${ko}"  || echo "N/A")
     kgr=$(extract_rps "${kgo}" || echo 0); kgp=$(extract_p99 "${kgo}" || echo "N/A")
     tr=$(extract_rps  "${to}"  || echo 0); tp=$(extract_p99  "${to}"  || echo "N/A")
 
-    RAMP_V1_RPS+=("${v1r}");      RAMP_V1_P99+=("${v1p}")
-    RAMP_V2_RPS+=("${v2r}");      RAMP_V2_P99+=("${v2p}")
+    RAMP_CE_RPS+=("${cer}");      RAMP_CE_P99+=("${cep}")
     RAMP_APISIX_RPS+=("${cr}");   RAMP_APISIX_P99+=("${cp}")
     RAMP_KRAKEND_RPS+=("${kr}");  RAMP_KRAKEND_P99+=("${kp}")
     RAMP_KONG_RPS+=("${kgr}");    RAMP_KONG_P99+=("${kgp}")
     RAMP_TYK_RPS+=("${tr}");      RAMP_TYK_P99+=("${tp}")
 
-    printf "%-8s %-14s %-14s %-14s %-14s %-14s %-14s\n" \
-      "${conns}" "${v1r}" "${v2r}" "${cr}" "${kr}" "${kgr}" "${tr}"
+    printf "%-8s %-14s %-14s %-14s %-14s %-14s\n" \
+      "${conns}" "${cer}" "${cr}" "${kr}" "${kgr}" "${tr}"
   done
   DURATION="${old_dur}"
 }
@@ -482,59 +429,51 @@ write_report() {
   to_int() { echo "${1:-0}" | sed 's/[^0-9.]//g' | awk '{printf "%d",$1+0}'; }
   to_ms()  { echo "${1:-0}" | sed 's/ms//' | awk '{printf "%.2f",$1+0}'; }
 
-  local v1_plain;  v1_plain=$(to_int  "${V1_PLAIN_RPS}")
-  local v2_plain;  v2_plain=$(to_int  "${V2_PLAIN_RPS}")
+  local ce_plain;  ce_plain=$(to_int  "${CE_PLAIN_RPS}")
   local c_plain;   c_plain=$(to_int   "${APISIX_PLAIN_RPS}")
   local k_plain;   k_plain=$(to_int   "${KRAKEND_PLAIN_RPS}")
   local kg_plain;  kg_plain=$(to_int  "${KONG_PLAIN_RPS}")
   local t_plain;   t_plain=$(to_int   "${TYK_PLAIN_RPS}")
-  local v1_auth;   v1_auth=$(to_int   "${V1_AUTH_RPS}")
-  local v2_auth;   v2_auth=$(to_int   "${V2_AUTH_RPS}")
+  local ce_auth;   ce_auth=$(to_int   "${CE_AUTH_RPS}")
   local c_auth;    c_auth=$(to_int    "${APISIX_AUTH_RPS}")
   local k_auth;    k_auth=$(to_int    "${KRAKEND_AUTH_RPS}")
   local kg_auth;   kg_auth=$(to_int   "${KONG_AUTH_RPS}")
   local t_auth;    t_auth=$(to_int    "${TYK_AUTH_RPS}")
-  local v1_stress; v1_stress=$(to_int "${V1_STRESS_RPS}")
-  local v2_stress; v2_stress=$(to_int "${V2_STRESS_RPS}")
+  local ce_stress; ce_stress=$(to_int "${CE_STRESS_RPS}")
   local c_stress;  c_stress=$(to_int  "${APISIX_STRESS_RPS}")
   local k_stress;  k_stress=$(to_int  "${KRAKEND_STRESS_RPS}")
   local kg_stress; kg_stress=$(to_int "${KONG_STRESS_RPS}")
   local t_stress;  t_stress=$(to_int  "${TYK_STRESS_RPS}")
 
-  local v1_plain_ms;  v1_plain_ms=$(to_ms  "${V1_PLAIN_P99}")
-  local v2_plain_ms;  v2_plain_ms=$(to_ms  "${V2_PLAIN_P99}")
+  local ce_plain_ms;  ce_plain_ms=$(to_ms  "${CE_PLAIN_P99}")
   local c_plain_ms;   c_plain_ms=$(to_ms   "${APISIX_PLAIN_P99}")
   local k_plain_ms;   k_plain_ms=$(to_ms   "${KRAKEND_PLAIN_P99}")
   local kg_plain_ms;  kg_plain_ms=$(to_ms  "${KONG_PLAIN_P99}")
   local t_plain_ms;   t_plain_ms=$(to_ms   "${TYK_PLAIN_P99}")
-  local v1_auth_ms;   v1_auth_ms=$(to_ms   "${V1_AUTH_P99}")
-  local v2_auth_ms;   v2_auth_ms=$(to_ms   "${V2_AUTH_P99}")
+  local ce_auth_ms;   ce_auth_ms=$(to_ms   "${CE_AUTH_P99}")
   local c_auth_ms;    c_auth_ms=$(to_ms    "${APISIX_AUTH_P99}")
   local k_auth_ms;    k_auth_ms=$(to_ms    "${KRAKEND_AUTH_P99}")
   local kg_auth_ms;   kg_auth_ms=$(to_ms   "${KONG_AUTH_P99}")
   local t_auth_ms;    t_auth_ms=$(to_ms    "${TYK_AUTH_P99}")
-  local v1_stress_ms; v1_stress_ms=$(to_ms "${V1_STRESS_P99}")
-  local v2_stress_ms; v2_stress_ms=$(to_ms "${V2_STRESS_P99}")
+  local ce_stress_ms; ce_stress_ms=$(to_ms "${CE_STRESS_P99}")
   local c_stress_ms;  c_stress_ms=$(to_ms  "${APISIX_STRESS_P99}")
   local k_stress_ms;  k_stress_ms=$(to_ms  "${KRAKEND_STRESS_P99}")
   local kg_stress_ms; kg_stress_ms=$(to_ms "${KONG_STRESS_P99}")
   local t_stress_ms;  t_stress_ms=$(to_ms  "${TYK_STRESS_P99}")
 
   # Ramp CSV
-  local ramp_v1_rps_csv="" ramp_v2_rps_csv="" ramp_apisix_rps_csv=""
+  local ramp_ce_rps_csv="" ramp_apisix_rps_csv=""
   local ramp_krakend_rps_csv="" ramp_kong_rps_csv="" ramp_tyk_rps_csv=""
-  local ramp_v1_p99_csv="" ramp_v2_p99_csv="" ramp_apisix_p99_csv=""
+  local ramp_ce_p99_csv="" ramp_apisix_p99_csv=""
   local ramp_krakend_p99_csv="" ramp_kong_p99_csv="" ramp_tyk_p99_csv=""
-  if [ ${#RAMP_V1_RPS[@]} -gt 0 ]; then
+  if [ ${#RAMP_CE_RPS[@]} -gt 0 ]; then
     local tmp=""
-    for v in "${RAMP_V1_RPS[@]}";      do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_v1_rps_csv="${tmp}"; tmp=""
-    for v in "${RAMP_V2_RPS[@]}";      do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_v2_rps_csv="${tmp}"; tmp=""
+    for v in "${RAMP_CE_RPS[@]}";      do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_ce_rps_csv="${tmp}"; tmp=""
     for v in "${RAMP_APISIX_RPS[@]}";  do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_apisix_rps_csv="${tmp}"; tmp=""
     for v in "${RAMP_KRAKEND_RPS[@]}"; do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_krakend_rps_csv="${tmp}"; tmp=""
     for v in "${RAMP_KONG_RPS[@]}";    do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_kong_rps_csv="${tmp}"; tmp=""
     for v in "${RAMP_TYK_RPS[@]}";     do tmp="${tmp:+${tmp}, }$(to_int "${v}")"; done; ramp_tyk_rps_csv="${tmp}"; tmp=""
-    for v in "${RAMP_V1_P99[@]}";      do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_v1_p99_csv="${tmp}"; tmp=""
-    for v in "${RAMP_V2_P99[@]}";      do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_v2_p99_csv="${tmp}"; tmp=""
+    for v in "${RAMP_CE_P99[@]}";      do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_ce_p99_csv="${tmp}"; tmp=""
     for v in "${RAMP_APISIX_P99[@]}";  do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_apisix_p99_csv="${tmp}"; tmp=""
     for v in "${RAMP_KRAKEND_P99[@]}"; do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_krakend_p99_csv="${tmp}"; tmp=""
     for v in "${RAMP_KONG_P99[@]}";    do tmp="${tmp:+${tmp}, }$(to_ms  "${v}")"; done; ramp_kong_p99_csv="${tmp}"; tmp=""
@@ -553,7 +492,7 @@ write_report() {
   }
 
   cat > "${REPORT_FILE}" <<EOF
-# Ando v1 vs Ando v2 vs APISIX vs KrakenD vs Kong vs Tyk — Benchmark Report
+# Ando CE vs APISIX vs KrakenD vs Kong vs Tyk — Benchmark Report
 
 **Date**        : ${ts}
 **Host**        : ${cpu}
@@ -566,15 +505,14 @@ write_report() {
 
 ## Throughput — Requests per Second (higher is better)
 
-> Bar order: Ando v1 | Ando v2 | APISIX | KrakenD | Kong | Tyk
+> Bar order: Ando CE | APISIX | KrakenD | Kong | Tyk
 
 \`\`\`mermaid
 xychart-beta
     title "Throughput — Requests per Second"
     x-axis ["Plain Proxy", "Key-Auth", "Stress (${STRESS_CONNECTIONS}c)"]
     y-axis "req/s"
-    bar [${v1_plain}, ${v1_auth}, ${v1_stress}]
-    bar [${v2_plain}, ${v2_auth}, ${v2_stress}]
+    bar [${ce_plain}, ${ce_auth}, ${ce_stress}]
     bar [${c_plain},  ${c_auth},  ${c_stress}]
     bar [${k_plain},  ${k_auth},  ${k_stress}]
     bar [${kg_plain}, ${kg_auth}, ${kg_stress}]
@@ -583,15 +521,14 @@ xychart-beta
 
 ## p99 Latency — ms (lower is better)
 
-> Bar order: Ando v1 | Ando v2 | APISIX | KrakenD | Kong | Tyk
+> Bar order: Ando CE | APISIX | KrakenD | Kong | Tyk
 
 \`\`\`mermaid
 xychart-beta
     title "p99 Latency (ms)"
     x-axis ["Plain Proxy", "Key-Auth", "Stress (${STRESS_CONNECTIONS}c)"]
     y-axis "latency ms"
-    bar [${v1_plain_ms}, ${v1_auth_ms}, ${v1_stress_ms}]
-    bar [${v2_plain_ms}, ${v2_auth_ms}, ${v2_stress_ms}]
+    bar [${ce_plain_ms}, ${ce_auth_ms}, ${ce_stress_ms}]
     bar [${c_plain_ms},  ${c_auth_ms},  ${c_stress_ms}]
     bar [${k_plain_ms},  ${k_auth_ms},  ${k_stress_ms}]
     bar [${kg_plain_ms}, ${kg_auth_ms}, ${kg_stress_ms}]
@@ -600,17 +537,16 @@ xychart-beta
 
 ---
 
-## Six-Way Comparison
+## Five-Way Comparison
 
 | Gateway  | Plain req/s | Plain p99 | Auth req/s | Auth p99 | Stress req/s | Stress p99 | Plain Winner |
 |----------|------------|-----------|-----------|----------|-------------|-----------|----|
-| Ando v1  | ${V1_PLAIN_RPS:-N/A} | ${V1_PLAIN_P99:-N/A} | ${V1_AUTH_RPS:-N/A} | ${V1_AUTH_P99:-N/A} | ${V1_STRESS_RPS:-N/A} | ${V1_STRESS_P99:-N/A} | |
-| Ando v2  | ${V2_PLAIN_RPS:-N/A} | ${V2_PLAIN_P99:-N/A} | ${V2_AUTH_RPS:-N/A} | ${V2_AUTH_P99:-N/A} | ${V2_STRESS_RPS:-N/A} | ${V2_STRESS_P99:-N/A} | |
+| Ando CE  | ${CE_PLAIN_RPS:-N/A} | ${CE_PLAIN_P99:-N/A} | ${CE_AUTH_RPS:-N/A} | ${CE_AUTH_P99:-N/A} | ${CE_STRESS_RPS:-N/A} | ${CE_STRESS_P99:-N/A} | |
 | APISIX   | ${APISIX_PLAIN_RPS:-N/A} | ${APISIX_PLAIN_P99:-N/A} | ${APISIX_AUTH_RPS:-N/A} | ${APISIX_AUTH_P99:-N/A} | ${APISIX_STRESS_RPS:-N/A} | ${APISIX_STRESS_P99:-N/A} | |
 | KrakenD  | ${KRAKEND_PLAIN_RPS:-N/A} | ${KRAKEND_PLAIN_P99:-N/A} | ${KRAKEND_AUTH_RPS:-N/A} | ${KRAKEND_AUTH_P99:-N/A} | ${KRAKEND_STRESS_RPS:-N/A} | ${KRAKEND_STRESS_P99:-N/A} | |
 | Kong     | ${KONG_PLAIN_RPS:-N/A} | ${KONG_PLAIN_P99:-N/A} | ${KONG_AUTH_RPS:-N/A} | ${KONG_AUTH_P99:-N/A} | ${KONG_STRESS_RPS:-N/A} | ${KONG_STRESS_P99:-N/A} | |
 | Tyk      | ${TYK_PLAIN_RPS:-N/A} | ${TYK_PLAIN_P99:-N/A} | ${TYK_AUTH_RPS:-N/A} | ${TYK_AUTH_P99:-N/A} | ${TYK_STRESS_RPS:-N/A} | ${TYK_STRESS_P99:-N/A} | |
-| **Winner** | $(winner_of "Ando v1" "${V1_PLAIN_RPS:-0}" "Ando v2" "${V2_PLAIN_RPS:-0}" "APISIX" "${APISIX_PLAIN_RPS:-0}" "KrakenD" "${KRAKEND_PLAIN_RPS:-0}" "Kong" "${KONG_PLAIN_RPS:-0}" "Tyk" "${TYK_PLAIN_RPS:-0}") | | $(winner_of "Ando v1" "${V1_AUTH_RPS:-0}" "Ando v2" "${V2_AUTH_RPS:-0}" "APISIX" "${APISIX_AUTH_RPS:-0}" "KrakenD" "${KRAKEND_AUTH_RPS:-0}" "Kong" "${KONG_AUTH_RPS:-0}" "Tyk" "${TYK_AUTH_RPS:-0}") | | $(winner_of "Ando v1" "${V1_STRESS_RPS:-0}" "Ando v2" "${V2_STRESS_RPS:-0}" "APISIX" "${APISIX_STRESS_RPS:-0}" "KrakenD" "${KRAKEND_STRESS_RPS:-0}" "Kong" "${KONG_STRESS_RPS:-0}" "Tyk" "${TYK_STRESS_RPS:-0}") | |
+| **Winner** | $(winner_of "Ando CE" "${CE_PLAIN_RPS:-0}" "APISIX" "${APISIX_PLAIN_RPS:-0}" "KrakenD" "${KRAKEND_PLAIN_RPS:-0}" "Kong" "${KONG_PLAIN_RPS:-0}" "Tyk" "${TYK_PLAIN_RPS:-0}") | | $(winner_of "Ando CE" "${CE_AUTH_RPS:-0}" "APISIX" "${APISIX_AUTH_RPS:-0}" "KrakenD" "${KRAKEND_AUTH_RPS:-0}" "Kong" "${KONG_AUTH_RPS:-0}" "Tyk" "${TYK_AUTH_RPS:-0}") | | $(winner_of "Ando CE" "${CE_STRESS_RPS:-0}" "APISIX" "${APISIX_STRESS_RPS:-0}" "KrakenD" "${KRAKEND_STRESS_RPS:-0}" "Kong" "${KONG_STRESS_RPS:-0}" "Tyk" "${TYK_STRESS_RPS:-0}") | |
 
 ---
 
@@ -619,20 +555,17 @@ xychart-beta
 | Scenario | req/s | p99 |
 |---|---|---|
 | Baseline (echo, no proxy) | ${BASELINE_RPS:-N/A} | ${BASELINE_P99:-N/A} |
-| Ando v1 plain proxy       | ${V1_PLAIN_RPS:-N/A} | ${V1_PLAIN_P99:-N/A} |
-| Ando v2 plain proxy       | ${V2_PLAIN_RPS:-N/A} | ${V2_PLAIN_P99:-N/A} |
+| Ando CE plain proxy       | ${CE_PLAIN_RPS:-N/A} | ${CE_PLAIN_P99:-N/A} |
 | APISIX plain proxy        | ${APISIX_PLAIN_RPS:-N/A} | ${APISIX_PLAIN_P99:-N/A} |
 | KrakenD plain proxy       | ${KRAKEND_PLAIN_RPS:-N/A} | ${KRAKEND_PLAIN_P99:-N/A} |
 | Kong plain proxy          | ${KONG_PLAIN_RPS:-N/A} | ${KONG_PLAIN_P99:-N/A} |
 | Tyk plain proxy           | ${TYK_PLAIN_RPS:-N/A} | ${TYK_PLAIN_P99:-N/A} |
-| Ando v1 key-auth          | ${V1_AUTH_RPS:-N/A} | ${V1_AUTH_P99:-N/A} |
-| Ando v2 key-auth          | ${V2_AUTH_RPS:-N/A} | ${V2_AUTH_P99:-N/A} |
+| Ando CE key-auth          | ${CE_AUTH_RPS:-N/A} | ${CE_AUTH_P99:-N/A} |
 | APISIX key-auth           | ${APISIX_AUTH_RPS:-N/A} | ${APISIX_AUTH_P99:-N/A} |
 | KrakenD key-auth (CEL)    | ${KRAKEND_AUTH_RPS:-N/A} | ${KRAKEND_AUTH_P99:-N/A} |
 | Kong key-auth             | ${KONG_AUTH_RPS:-N/A} | ${KONG_AUTH_P99:-N/A} |
 | Tyk key-auth              | ${TYK_AUTH_RPS:-N/A} | ${TYK_AUTH_P99:-N/A} |
-| Ando v1 stress (${STRESS_CONNECTIONS}c) | ${V1_STRESS_RPS:-N/A} | ${V1_STRESS_P99:-N/A} |
-| Ando v2 stress (${STRESS_CONNECTIONS}c) | ${V2_STRESS_RPS:-N/A} | ${V2_STRESS_P99:-N/A} |
+| Ando CE stress (${STRESS_CONNECTIONS}c) | ${CE_STRESS_RPS:-N/A} | ${CE_STRESS_P99:-N/A} |
 | APISIX stress (${STRESS_CONNECTIONS}c)  | ${APISIX_STRESS_RPS:-N/A} | ${APISIX_STRESS_P99:-N/A} |
 | KrakenD stress (${STRESS_CONNECTIONS}c) | ${KRAKEND_STRESS_RPS:-N/A} | ${KRAKEND_STRESS_P99:-N/A} |
 | Kong stress (${STRESS_CONNECTIONS}c)    | ${KONG_STRESS_RPS:-N/A} | ${KONG_STRESS_P99:-N/A} |
@@ -641,21 +574,20 @@ xychart-beta
 EOF
 
   # Ramp section
-  if [ -n "${ramp_v1_rps_csv}" ]; then
+  if [ -n "${ramp_ce_rps_csv}" ]; then
     cat >> "${REPORT_FILE}" <<EOF
 ---
 
 ## Scenario 4 — Concurrency Ramp (10 → 1000 connections)
 
-> Line order: Ando v1 | Ando v2 | APISIX | KrakenD | Kong | Tyk
+> Line order: Ando CE | APISIX | KrakenD | Kong | Tyk
 
 \`\`\`mermaid
 xychart-beta
     title "Concurrency Ramp — Requests per Second"
     x-axis ["10c", "50c", "100c", "250c", "500c", "1000c"]
     y-axis "req/s"
-    line [${ramp_v1_rps_csv}]
-    line [${ramp_v2_rps_csv}]
+    line [${ramp_ce_rps_csv}]
     line [${ramp_apisix_rps_csv}]
     line [${ramp_krakend_rps_csv}]
     line [${ramp_kong_rps_csv}]
@@ -667,8 +599,7 @@ xychart-beta
     title "Concurrency Ramp — p99 Latency (ms, lower is better)"
     x-axis ["10c", "50c", "100c", "250c", "500c", "1000c"]
     y-axis "latency ms"
-    line [${ramp_v1_p99_csv}]
-    line [${ramp_v2_p99_csv}]
+    line [${ramp_ce_p99_csv}]
     line [${ramp_apisix_p99_csv}]
     line [${ramp_krakend_p99_csv}]
     line [${ramp_kong_p99_csv}]
@@ -677,15 +608,14 @@ xychart-beta
 
 ### Ramp Throughput (req/s)
 
-| Conns | v1 | v2 | APISIX | KrakenD | Kong | Tyk |
-|-------|----|----|--------|---------|------|-----|
+| Conns | Ando CE | APISIX | KrakenD | Kong | Tyk |
+|-------|---------|--------|---------|------|-----|
 EOF
     local RAMP_CONNS=(10 50 100 250 500 1000)
     for i in "${!RAMP_CONNS[@]}"; do
-      printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+      printf "| %s | %s | %s | %s | %s | %s |\n" \
         "${RAMP_CONNS[$i]}" \
-        "${RAMP_V1_RPS[$i]:-N/A}" \
-        "${RAMP_V2_RPS[$i]:-N/A}" \
+        "${RAMP_CE_RPS[$i]:-N/A}" \
         "${RAMP_APISIX_RPS[$i]:-N/A}" \
         "${RAMP_KRAKEND_RPS[$i]:-N/A}" \
         "${RAMP_KONG_RPS[$i]:-N/A}" \
@@ -696,14 +626,13 @@ EOF
 
 ### Ramp p99 Latency (ms)
 
-| Conns | v1 | v2 | APISIX | KrakenD | Kong | Tyk |
-|-------|----|----|--------|---------|------|-----|
+| Conns | Ando CE | APISIX | KrakenD | Kong | Tyk |
+|-------|---------|--------|---------|------|-----|
 EOF
     for i in "${!RAMP_CONNS[@]}"; do
-      printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+      printf "| %s | %s | %s | %s | %s | %s |\n" \
         "${RAMP_CONNS[$i]}" \
-        "${RAMP_V1_P99[$i]:-N/A}" \
-        "${RAMP_V2_P99[$i]:-N/A}" \
+        "${RAMP_CE_P99[$i]:-N/A}" \
         "${RAMP_APISIX_P99[$i]:-N/A}" \
         "${RAMP_KRAKEND_P99[$i]:-N/A}" \
         "${RAMP_KONG_P99[$i]:-N/A}" \
@@ -724,14 +653,9 @@ EOF
 $(cat "${RESULTS_DIR}/wrk_baseline.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
-### Plain Proxy — Ando v1
+### Plain Proxy — Ando CE
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_v1_plain.txt" 2>/dev/null || echo "N/A")
-\`\`\`
-
-### Plain Proxy — Ando v2
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_v2_plain.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_ce_plain.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
 ### Plain Proxy — APISIX
@@ -739,14 +663,9 @@ $(cat "${RESULTS_DIR}/wrk_v2_plain.txt" 2>/dev/null || echo "N/A")
 $(cat "${RESULTS_DIR}/wrk_apisix_plain.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
-### Key-Auth — Ando v1
+### Key-Auth — Ando CE
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_v1_auth.txt" 2>/dev/null || echo "N/A")
-\`\`\`
-
-### Key-Auth — Ando v2
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_v2_auth.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_ce_auth.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
 ### Key-Auth — APISIX
@@ -754,14 +673,9 @@ $(cat "${RESULTS_DIR}/wrk_v2_auth.txt" 2>/dev/null || echo "N/A")
 $(cat "${RESULTS_DIR}/wrk_apisix_auth.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
-### Stress Test — Ando v1
+### Stress Test — Ando CE
 \`\`\`
-$(cat "${RESULTS_DIR}/wrk_v1_stress.txt" 2>/dev/null || echo "N/A")
-\`\`\`
-
-### Stress Test — Ando v2
-\`\`\`
-$(cat "${RESULTS_DIR}/wrk_v2_stress.txt" 2>/dev/null || echo "N/A")
+$(cat "${RESULTS_DIR}/wrk_ce_stress.txt" 2>/dev/null || echo "N/A")
 \`\`\`
 
 ### Stress Test — APISIX
@@ -823,7 +737,7 @@ EOF
 # ============================================================
 echo -e "\n${BOLD}${CYAN}"
 echo "  ╔═════════════════════════════════════════════════════════╗"
-echo "  ║  Ando v1 vs v2 vs APISIX vs KrakenD vs Kong vs Tyk     ║"
+echo "  ║  Ando CE vs APISIX vs KrakenD vs Kong vs Tyk             ║"
 echo "  ╚═════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 

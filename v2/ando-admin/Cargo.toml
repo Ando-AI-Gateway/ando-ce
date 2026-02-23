@@ -3,7 +3,7 @@ name = "ando-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Admin REST API for Ando v2 gateway"
+description = "Admin REST API for Ando CE gateway"
 
 [dependencies]
 ando-core = { path = "../ando-core" }

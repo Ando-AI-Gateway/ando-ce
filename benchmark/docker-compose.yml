@@ -1,5 +1,5 @@
 # ============================================================
-# Ando v1 vs Ando v2 vs APISIX vs KrakenD vs Kong vs Tyk
+# Ando CE vs APISIX vs KrakenD vs Kong vs Tyk
 # Unified Benchmark
 # ============================================================
 # Usage: ./benchmark/bench.sh [baseline|plain|auth|stress|ramp|all]
@@ -28,31 +28,13 @@ services:
       retries: 20
       start_period: 5s
 
-  # ── Ando v1 (Pingora / Tokio) ───────────────────────────────
-  ando-v1:
-    build:
-      context: ../v1
-      dockerfile: deploy/docker/Dockerfile
-    volumes:
-      - ./ando-v1-bench.yaml:/etc/ando/ando.yaml:ro
-    networks: [bench]
-    depends_on:
-      echo:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9180/apisix/admin/health || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-      start_period: 15s
-
-  # ── Ando v2 (monoio / thread-per-core) ──────────────────────
-  ando-v2:
+  # ── Ando CE (monoio / thread-per-core) ──────────────────────
+  ando-ce:
     build:
       context: ../v2
       dockerfile: Dockerfile
     volumes:
-      - ./ando-v2-bench.yaml:/etc/ando/ando.yaml:ro
+      - ./ando-ce-bench.yaml:/etc/ando/ando.yaml:ro
     networks: [bench]
     depends_on:
       echo:

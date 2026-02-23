@@ -3,7 +3,7 @@ name = "ando-plugin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Plugin system for Ando v2 gateway"
+description = "Plugin system for Ando CE gateway"
 
 [dependencies]
 ando-core = { path = "../ando-core" }
