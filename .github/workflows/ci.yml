@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "ce/*", "feat/*"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "ando-ce -> target"
+
+      - name: Check formatting
+        working-directory: ando-ce
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        working-directory: ando-ce
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run tests
+        working-directory: ando-ce
+        run: cargo test --workspace --all-features
+
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    # Run coverage only on push to main to avoid slowing down PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "ando-ce -> target"
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report
+        working-directory: ando-ce
+        run: |
+          cargo llvm-cov \
+            --workspace \
+            --lcov \
+            --output-path lcov.info
+
+      - name: Upload coverage to Codecov (optional)
+        uses: codecov/codecov-action@v4
+        if: ${{ always() }}
+        with:
+          files: ando-ce/lcov.info
+          fail_ci_if_error: false
+
+      - name: Enforce 70 % line-coverage gate
+        working-directory: ando-ce
+        run: cargo llvm-cov report --fail-under-lines 70
