@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ando CE — Admin Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #09090b;
+      --surface:    #111113;
+      --surface-2:  #18181b;
+      --border:     #27272a;
+      --border-2:   #3f3f46;
+      --text:       #fafafa;
+      --text-2:     #a1a1aa;
+      --text-3:     #52525b;
+      --accent:     #e4e4e7;
+      --green:      #22c55e;
+      --green-dim:  #166534;
+      --amber:      #f59e0b;
+      --amber-dim:  #78350f;
+      --red:        #ef4444;
+      --blue:       #3b82f6;
+      --ee-bg:      #1c1917;
+      --ee-border:  #44403c;
+      --ee-text:    #78716c;
+      --ee-icon:    #57534e;
+      --radius:     10px;
+      --radius-sm:  6px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────── */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-logo {
+      padding: 20px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo-mark {
+      width: 28px;
+      height: 28px;
+      background: white;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sidebar-logo-mark svg { width: 18px; height: 18px; }
+
+    .sidebar-brand { font-weight: 600; font-size: 14px; color: var(--text); letter-spacing: -0.02em; }
+    .sidebar-edition {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--text-3);
+      text-transform: uppercase;
+      margin-top: 1px;
+    }
+
+    .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+
+    .nav-section {
+      padding: 14px 16px 4px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 16px;
+      cursor: pointer;
+      color: var(--text-2);
+      transition: all 0.15s;
+      border-left: 2px solid transparent;
+      margin: 1px 0;
+      font-size: 13px;
+    }
+
+    .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .nav-item.active { color: var(--text); background: rgba(255,255,255,0.06); border-left-color: white; }
+    .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    .nav-item .badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      color: var(--text-3);
+    }
+
+    .sidebar-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .upgrade-card {
+      background: linear-gradient(135deg, #1c1917 0%, #1a1210 100%);
+      border: 1px solid #44403c;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+
+    .upgrade-card-title { font-size: 12px; font-weight: 600; color: #d6d3d1; margin-bottom: 4px; }
+    .upgrade-card-desc { font-size: 11px; color: #78716c; line-height: 1.4; margin-bottom: 10px; }
+    .upgrade-card-btn {
+      display: block;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #1c1917;
+      background: #d6d3d1;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 0;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .upgrade-card-btn:hover { background: white; }
+
+    /* ── MAIN ─────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .topbar {
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .topbar-title { font-size: 14px; font-weight: 600; color: var(--text); }
+    .topbar-subtitle { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .status-dot::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px rgba(34,197,94,0.6);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .edition-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      color: var(--text-3);
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* ── VIEWS ───────────────────────────────── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── PAGE HEADER ─────────────────────────── */
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 20px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
+    .page-header p { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+
+    /* ── STATS GRID ──────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+
+    .stat-card-label { font-size: 11px; color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card-value { font-size: 28px; font-weight: 600; color: var(--text); margin: 4px 0 2px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .stat-card-sub { font-size: 11px; color: var(--text-3); }
+
+    /* ── SECTION GRID ───────────────────────── */
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .card-action {
+      font-size: 11px;
+      color: var(--text-3);
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: none;
+      transition: all 0.15s;
+    }
+    .card-action:hover { color: var(--text-2); border-color: var(--border-2); }
+
+    .card-body { padding: 14px 18px; }
+
+    /* ── TABLE ────────────────────────────────── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .code { font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; color: var(--text); }
+    .empty-row td { text-align: center; color: var(--text-3); padding: 32px; }
+
+    /* ── TAGS ─────────────────────────────────── */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      letter-spacing: 0.03em;
+    }
+    .tag-green { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .tag-amber { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .tag-red   { background: rgba(239,68,68,0.12);  color: #f87171; }
+    .tag-blue  { background: rgba(59,130,246,0.12); color: #60a5fa; }
+    .tag-zinc  { background: rgba(255,255,255,0.06); color: var(--text-3); }
+    .tag-ee    { background: rgba(120,113,108,0.15); color: #78716c; border: 1px solid #44403c; }
+
+    /* ── PLUGIN GRID ─────────────────────────── */
+    .plugin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .plugin-card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      transition: border-color 0.15s;
+    }
+    .plugin-card:hover { border-color: var(--border-2); }
+
+    .plugin-card.locked {
+      background: var(--ee-bg);
+      border-color: #292524;
+      opacity: 0.75;
+      cursor: pointer;
+    }
+    .plugin-card.locked:hover { opacity: 0.9; border-color: #44403c; }
+
+    .plugin-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .plugin-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .plugin-icon svg { width: 18px; height: 18px; }
+    .plugin-icon.locked-icon { background: rgba(68,64,60,0.4); }
+
+    .plugin-status-row { display: flex; gap: 6px; align-items: center; }
+
+    .plugin-name { font-size: 13px; font-weight: 600; color: var(--text); font-family: "SF Mono", monospace; margin-bottom: 4px; }
+    .plugin-card.locked .plugin-name { color: var(--ee-text); }
+
+    .plugin-desc { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+    .plugin-card.locked .plugin-desc { color: #57534e; }
+
+    .plugin-phase { font-size: 10px; color: var(--text-3); margin-top: 8px; }
+    .plugin-card.locked .plugin-phase { color: #44403c; }
+
+    .lock-overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      background: rgba(28,25,23,0.85);
+      transition: opacity 0.2s;
+      backdrop-filter: blur(2px);
+    }
+    .plugin-card.locked:hover .lock-overlay { opacity: 1; }
+
+    .lock-overlay-inner {
+      text-align: center;
+      padding: 12px;
+    }
+    .lock-overlay-title { font-size: 13px; font-weight: 600; color: #d6d3d1; margin: 8px 0 6px; }
+    .lock-overlay-desc { font-size: 11px; color: #78716c; line-height: 1.4; margin-bottom: 12px; }
+    .lock-overlay-btn {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #1c1917;
+      background: #d6d3d1;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 16px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .lock-overlay-btn:hover { background: white; }
+
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0 16px;
+    }
+    .section-divider-line { flex: 1; height: 1px; background: var(--border); }
+    .section-divider-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .section-divider-label svg { width: 12px; height: 12px; }
+
+    /* ── MODAL ────────────────────────────────── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 420px;
+      max-width: calc(100vw - 32px);
+      padding: 28px;
+      position: relative;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+    }
+    .modal-close:hover { color: var(--text-2); background: rgba(255,255,255,0.06); }
+
+    .modal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #a8a29e;
+      background: rgba(68,64,60,0.5);
+      border: 1px solid #44403c;
+      border-radius: 9999px;
+      padding: 3px 10px;
+      margin-bottom: 16px;
+    }
+
+    .modal h2 { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; letter-spacing: -0.02em; }
+    .modal p { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 20px; }
+
+    .modal-features { margin-bottom: 24px; }
+    .modal-feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .modal-feature::before {
+      content: '';
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #a8a29e;
+      flex-shrink: 0;
+    }
+
+    .modal-actions { display: flex; gap: 8px; }
+    .btn-primary {
+      flex: 1;
+      padding: 8px 16px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: #e4e4e7; }
+    .btn-secondary {
+      flex: 1;
+      padding: 8px 16px;
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--border-2); color: var(--text); }
+
+    /* ── TOOLBAR ─────────────────────────────── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+    .toolbar-left { display: flex; align-items: center; gap: 8px; }
+
+    .btn-add {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-add:hover { background: #e4e4e7; }
+    .btn-add svg { width: 14px; height: 14px; }
+
+    .search-input {
+      padding: 6px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      outline: none;
+      width: 200px;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: var(--border-2); }
+    .search-input::placeholder { color: var(--text-3); }
+
+    /* ── FORM ────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.04em; }
+    .form-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--border-2); }
+    .form-hint { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+    /* ── EMPTY STATE ─────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--text-3);
+    }
+    .empty-state svg { width: 40px; height: 40px; margin: 0 auto 16px; opacity: 0.3; }
+    .empty-state h3 { font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+    .empty-state p { font-size: 12px; line-height: 1.5; }
+
+    /* ── NOTICE ──────────────────────────────── */
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(245,158,11,0.06);
+      border: 1px solid rgba(245,158,11,0.18);
+      border-radius: var(--radius-sm);
+      margin-bottom: 20px;
+    }
+    .notice svg { width: 15px; height: 15px; color: var(--amber); flex-shrink: 0; margin-top: 1px; }
+    .notice-text { font-size: 12px; color: #a16207; line-height: 1.5; }
+
+    /* ── SCROLLBAR ───────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ SIDEBAR ══════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-mark">
+      <svg viewBox="0 0 18 18" fill="none">
+        <rect width="18" height="18" rx="4" fill="#09090b"/>
+        <path d="M9 3L15 14H3L9 3Z" fill="white" fill-opacity="0.9"/>
+      </svg>
+    </div>
+    <div>
+      <div class="sidebar-brand">Ando</div>
+      <div class="sidebar-edition">Community Edition</div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section">General</div>
+
+    <div class="nav-item active" data-view="overview" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="9" height="9" rx="2"/><rect x="13" y="2" width="9" height="9" rx="2"/><rect x="2" y="13" width="9" height="9" rx="2"/><rect x="13" y="13" width="9" height="9" rx="2"/></svg>
+      Overview
+    </div>
+
+    <div class="nav-section">Data Plane</div>
+
+    <div class="nav-item" data-view="routes" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h18M3 6l9-3 9 3M3 18l9 3 9-3"/></svg>
+      Routes
+      <span class="badge" id="nav-routes-count">0</span>
+    </div>
+
+    <div class="nav-item" data-view="upstreams" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l4 4"/></svg>
+      Upstreams
+      <span class="badge" id="nav-upstreams-count">0</span>
+    </div>
+
+    <div class="nav-item" data-view="consumers" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Consumers
+      <span class="badge" id="nav-consumers-count">0</span>
+    </div>
+
+    <div class="nav-section">Plugins</div>
+
+    <div class="nav-item" data-view="plugins" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Plugins
+    </div>
+
+    <div class="nav-section">System</div>
+
+    <div class="nav-item" data-view="settings" onclick="navigate(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      Settings
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="upgrade-card">
+      <div class="upgrade-card-title">Upgrade to Enterprise</div>
+      <div class="upgrade-card-desc">Unlock clustering, distributed rate limiting, RBAC, and more.</div>
+      <a href="https://andolabs.io/enterprise" target="_blank" class="upgrade-card-btn">Get Enterprise →</a>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════ MAIN ═════════════════════════════ -->
+<main class="main">
+  <header class="topbar">
+    <div>
+      <div class="topbar-title" id="topbar-title">Overview</div>
+      <div class="topbar-subtitle" id="topbar-subtitle">System health and configuration summary</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-dot" id="status-text">Running</div>
+      <span class="edition-badge">CE</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ═══ OVERVIEW ═══ -->
+    <div class="view active" id="view-overview">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-label">Routes</div>
+          <div class="stat-card-value" id="stat-routes">—</div>
+          <div class="stat-card-sub">Active routing rules</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Upstreams</div>
+          <div class="stat-card-value" id="stat-upstreams">—</div>
+          <div class="stat-card-sub">Backend targets</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Consumers</div>
+          <div class="stat-card-value" id="stat-consumers">—</div>
+          <div class="stat-card-sub">API identities</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-label">Plugins</div>
+          <div class="stat-card-value" id="stat-plugins">6</div>
+          <div class="stat-card-sub">CE active · 6 EE locked</div>
+        </div>
+      </div>
+
+      <div class="section-grid">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recent Routes</div>
+            <button class="card-action" onclick="navigate(document.querySelector('[data-view=routes]'))">View all</button>
+          </div>
+          <div id="overview-routes-body">
+            <div class="empty-state" style="padding:32px">
+              <p>No routes configured yet</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Plugins</div>
+            <button class="card-action" onclick="navigate(document.querySelector('[data-view=plugins]'))">View all</button>
+          </div>
+          <div style="padding:14px 18px">
+            <div style="display:flex;flex-direction:column;gap:8px" id="overview-plugins-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Edition Comparison</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Community Edition</th>
+                <th>Enterprise Edition</th>
+              </tr>
+            </thead>
+            <tbody id="comparison-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ROUTES ═══ -->
+    <div class="view" id="view-routes">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn-add" onclick="showAddModal('route')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Add Route
+          </button>
+        </div>
+        <input class="search-input" placeholder="Search routes…" oninput="filterTable(this, 'routes-table')" />
+      </div>
+      <div class="card">
+        <table class="data-table" id="routes-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Method</th>
+              <th>URI</th>
+              <th>Upstream</th>
+              <th>Plugins</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="routes-tbody">
+            <tr class="empty-row"><td colspan="7">No routes configured. Click "Add Route" to create one.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ UPSTREAMS ═══ -->
+    <div class="view" id="view-upstreams">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn-add" onclick="showAddModal('upstream')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Add Upstream
+          </button>
+        </div>
+        <input class="search-input" placeholder="Search upstreams…" oninput="filterTable(this, 'upstreams-table')" />
+      </div>
+      <div class="card">
+        <table class="data-table" id="upstreams-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Nodes</th>
+              <th>Load Balance</th>
+              <th>Health Check</th>
+            </tr>
+          </thead>
+          <tbody id="upstreams-tbody">
+            <tr class="empty-row"><td colspan="5">No upstreams configured. Click "Add Upstream" to create one.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ CONSUMERS ═══ -->
+    <div class="view" id="view-consumers">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn-add" onclick="showAddModal('consumer')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Add Consumer
+          </button>
+        </div>
+        <input class="search-input" placeholder="Search consumers…" oninput="filterTable(this, 'consumers-table')" />
+      </div>
+      <div class="card">
+        <table class="data-table" id="consumers-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Plugins</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="consumers-tbody">
+            <tr class="empty-row"><td colspan="3">No consumers configured. Click "Add Consumer" to create one.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ PLUGINS ═══ -->
+    <div class="view" id="view-plugins">
+      <div class="notice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div class="notice-text">
+          You are running <strong>Ando Community Edition</strong>. Enterprise plugins are visible below but require a license to enable.
+          <a href="https://andolabs.io/enterprise" target="_blank" style="color:#b45309;font-weight:600;margin-left:4px">Learn more →</a>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:4px">Community Edition · 6 plugins available</div>
+        <div style="font-size:12px;color:var(--text-3)">All CE plugins are active and ready to attach to routes and consumers.</div>
+      </div>
+      <div class="plugin-grid" id="ce-plugin-grid"></div>
+
+      <div class="section-divider">
+        <div class="section-divider-line"></div>
+        <div class="section-divider-label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Enterprise Edition · 6 plugins locked
+        </div>
+        <div class="section-divider-line"></div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--ee-text)">These plugins require Ando Enterprise Edition. Hover to see details and upgrade options.</div>
+      </div>
+      <div class="plugin-grid" id="ee-plugin-grid"></div>
+    </div>
+
+    <!-- ═══ SETTINGS ═══ -->
+    <div class="view" id="view-settings">
+      <div class="card" style="max-width:560px">
+        <div class="card-header"><div class="card-title">Admin API</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group">
+            <label class="form-label">Listen Address</label>
+            <input class="form-input" value="0.0.0.0:9180" readonly />
+            <div class="form-hint">Admin API listens on this address</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data Plane Port</label>
+            <input class="form-input" value="0.0.0.0:9080" readonly />
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:560px;margin-top:12px">
+        <div class="card-header"><div class="card-title">Edition</div></div>
+        <div class="card-body">
+          <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--text)">Community Edition</div>
+              <div style="font-size:12px;color:var(--text-3);margin-top:2px">Apache 2.0 · Open source · No license required</div>
+            </div>
+            <span class="tag tag-green" style="margin-left:auto">Active</span>
+          </div>
+          <a href="https://andolabs.io/enterprise" target="_blank" class="btn-primary" style="display:inline-block;text-decoration:none;padding:8px 20px;border-radius:7px;">
+            Upgrade to Enterprise
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<!-- ═══════════════════════ EE UPGRADE MODAL ═══════════════════════ -->
+<div class="modal-backdrop" id="ee-modal" onclick="closeEEModal(event)">
+  <div class="modal" id="ee-modal-box">
+    <button class="modal-close" onclick="closeEEModal()">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="modal-badge">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Enterprise Only
+    </div>
+    <h2 id="ee-modal-name">Plugin Name</h2>
+    <p id="ee-modal-desc">Description of the plugin.</p>
+    <div class="modal-features" id="ee-modal-features"></div>
+    <div class="modal-actions">
+      <a href="https://andolabs.io/enterprise" target="_blank" class="btn-primary">Get Enterprise Edition</a>
+      <button class="btn-secondary" onclick="closeEEModal()">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ ADD MODAL ════════════════════════════ -->
+<div class="modal-backdrop" id="add-modal" onclick="closeAddModal(event)">
+  <div class="modal" id="add-modal-box">
+    <button class="modal-close" onclick="closeAddModal()">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <h2 id="add-modal-title" style="margin-bottom:16px">Add Route</h2>
+    <div id="add-modal-content"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-primary" id="add-modal-submit">Create</button>
+      <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────
+const BASE = '/apisix/admin';
+
+const CE_PLUGINS = [
+  {
+    name: 'key-auth',
+    phase: 'Access',
+    icon: 'key',
+    desc: 'API key authentication via request header. Validates against consumer store.'
+  },
+  {
+    name: 'jwt-auth',
+    phase: 'Access',
+    icon: 'shield',
+    desc: 'JWT Bearer token validation. Supports HS256 and RS256 algorithms.'
+  },
+  {
+    name: 'basic-auth',
+    phase: 'Access',
+    icon: 'user',
+    desc: 'HTTP Basic authentication against consumer username/password store.'
+  },
+  {
+    name: 'ip-restriction',
+    phase: 'Access',
+    icon: 'globe',
+    desc: 'Allow or deny requests by IP address or CIDR range. Per-route and global.'
+  },
+  {
+    name: 'rate-limiting',
+    phase: 'Access',
+    icon: 'activity',
+    desc: 'Local sliding-window rate limiter. Per-consumer or per-IP with configurable windows.'
+  },
+  {
+    name: 'cors',
+    phase: 'HeaderFilter',
+    icon: 'layers',
+    desc: 'CORS headers with preflight OPTIONS handling and configurable allowed origins.'
+  }
+];
+
+const EE_PLUGINS = [
+  {
+    name: 'hmac-auth',
+    phase: 'Access',
+    icon: 'lock',
+    desc: 'HMAC request signing and verification. Per-consumer signed credentials with replay protection.',
+    features: [
+      'Per-consumer HMAC secrets',
+      'Replay attack protection via timestamp window',
+      'Request body hash validation',
+      'Custom signing header support'
+    ]
+  },
+  {
+    name: 'oauth2',
+    phase: 'Access',
+    icon: 'lock',
+    desc: 'Full OAuth 2.0 authorization code and client credentials flows with token introspection.',
+    features: [
+      'Authorization code flow',
+      'Client credentials flow',
+      'Token introspection endpoint',
+      'Configurable token TTL and scope validation'
+    ]
+  },
+  {
+    name: 'rate-limiting-advanced',
+    phase: 'Access',
+    icon: 'lock',
+    desc: 'Distributed rate limiting backed by Redis. Consistent limits enforced across all cluster nodes.',
+    features: [
+      'Redis-backed sliding window counters',
+      'Consistent limits across all nodes',
+      'Per-route, per-consumer, per-IP granularity',
+      'Burst tolerance configuration'
+    ]
+  },
+  {
+    name: 'traffic-mirror',
+    phase: 'Upstream',
+    icon: 'lock',
+    desc: 'Shadow production traffic to a secondary upstream for testing without impacting live users.',
+    features: [
+      'Fire-and-forget shadow requests',
+      'Zero latency impact on primary path',
+      'Configurable mirror ratio (0–100%)',
+      'Separate mirror upstream target'
+    ]
+  },
+  {
+    name: 'canary-release',
+    phase: 'Upstream',
+    icon: 'lock',
+    desc: 'Weighted traffic splitting between stable and canary upstreams for risk-controlled rollouts.',
+    features: [
+      'Weight-based traffic routing',
+      'Header-based canary targeting',
+      'Gradual traffic shift support',
+      'Independent canary upstream configuration'
+    ]
+  },
+  {
+    name: 'circuit-breaker',
+    phase: 'Upstream',
+    icon: 'lock',
+    desc: 'Automatic upstream isolation on failure with configurable error thresholds and recovery windows.',
+    features: [
+      'Closed → Open → Half-Open state machine',
+      'Configurable error threshold (% or count)',
+      'Automatic recovery probing',
+      '503 responses during open state with retry-after header'
+    ]
+  }
+];
+
+const COMPARISON = [
+  { feature: 'Core proxy engine (monoio, thread-per-core)', ce: true, ee: true },
+  { feature: 'Admin API (APISIX-compatible REST)', ce: true, ee: true },
+  { feature: 'key-auth, jwt-auth, basic-auth', ce: true, ee: true },
+  { feature: 'ip-restriction, rate-limiting (local)', ce: true, ee: true },
+  { feature: 'CORS plugin', ce: true, ee: true },
+  { feature: 'etcd-backed config', ce: true, ee: true },
+  { feature: 'Prometheus metrics', ce: true, ee: true },
+  { feature: 'Compliance controls (SOC2/HIPAA/GDPR)', ce: true, ee: true },
+  { feature: 'hmac-auth, oauth2', ce: false, ee: true },
+  { feature: 'Distributed rate limiting (Redis)', ce: false, ee: true },
+  { feature: 'Traffic mirror', ce: false, ee: true },
+  { feature: 'Canary release', ce: false, ee: true },
+  { feature: 'Circuit breaker', ce: false, ee: true },
+  { feature: 'Multi-node HA clustering', ce: false, ee: true },
+  { feature: 'RBAC admin interface', ce: false, ee: true },
+  { feature: 'Priority SLA support', ce: false, ee: true }
+];
+
+// ─── ICONS ───────────────────────────────────────────────────────
+function icon(name, size = 18) {
+  const icons = {
+    key: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`,
+    shield: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    user: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    globe: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+    activity: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+    layers: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    lock: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
+  };
+  return icons[name] || icons['lock'];
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────
+const VIEW_META = {
+  overview:  { title: 'Overview',   sub: 'System health and configuration summary' },
+  routes:    { title: 'Routes',     sub: 'Manage proxy routing rules' },
+  upstreams: { title: 'Upstreams',  sub: 'Manage backend targets and nodes' },
+  consumers: { title: 'Consumers',  sub: 'Manage API identities and credentials' },
+  plugins:   { title: 'Plugins',    sub: 'Active CE plugins · Locked EE plugins' },
+  settings:  { title: 'Settings',   sub: 'Gateway configuration and edition info' }
+};
+
+function navigate(el) {
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const v = el.dataset.view;
+  document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+  document.getElementById('topbar-title').textContent = VIEW_META[v].title;
+  document.getElementById('topbar-subtitle').textContent = VIEW_META[v].sub;
+}
+
+// ─── API FETCH ────────────────────────────────────────────────────
+async function apiFetch(path) {
+  try {
+    const r = await fetch(BASE + path);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+// ─── LOAD DATA ────────────────────────────────────────────────────
+async function loadAll() {
+  const [routes, upstreams, consumers] = await Promise.all([
+    apiFetch('/routes'),
+    apiFetch('/upstreams'),
+    apiFetch('/consumers')
+  ]);
+
+  const routeList  = routes?.routes    || routes?.list    || [];
+  const upstreamList = upstreams?.upstreams || upstreams?.list || [];
+  const consumerList = consumers?.consumers || consumers?.list || [];
+
+  const rc = routeList.length;
+  const uc = upstreamList.length;
+  const cc = consumerList.length;
+
+  // Stats
+  document.getElementById('stat-routes').textContent    = rc;
+  document.getElementById('stat-upstreams').textContent = uc;
+  document.getElementById('stat-consumers').textContent = cc;
+
+  // Nav badges
+  document.getElementById('nav-routes-count').textContent    = rc;
+  document.getElementById('nav-upstreams-count').textContent = uc;
+  document.getElementById('nav-consumers-count').textContent = cc;
+
+  // Overview routes preview
+  const oRoutes = document.getElementById('overview-routes-body');
+  if (routeList.length === 0) {
+    oRoutes.innerHTML = '<div class="empty-state" style="padding:28px"><p>No routes configured yet</p></div>';
+  } else {
+    oRoutes.innerHTML = `<table class="data-table"><thead><tr><th>URI</th><th>Method</th><th>Status</th></tr></thead><tbody>${
+      routeList.slice(0,5).map(r => `<tr><td class="code">${r.uri || '—'}</td><td><span class="tag tag-blue">${r.methods?.[0] || 'ANY'}</span></td><td><span class="tag tag-green">OK</span></td></tr>`).join('')
+    }</tbody></table>`;
+  }
+
+  // Routes table
+  const rtb = document.getElementById('routes-tbody');
+  rtb.innerHTML = routeList.length === 0
+    ? '<tr class="empty-row"><td colspan="7">No routes configured. Click "Add Route" to create one.</td></tr>'
+    : routeList.map(r => `<tr>
+        <td class="code">${r.id || '—'}</td>
+        <td>${r.name || '—'}</td>
+        <td>${(r.methods || ['*']).map(m => `<span class="tag tag-blue">${m}</span>`).join(' ')}</td>
+        <td class="code">${r.uri || '—'}</td>
+        <td class="code">${r.upstream_id || '—'}</td>
+        <td>${Object.keys(r.plugins || {}).map(p => `<span class="tag tag-zinc">${p}</span>`).join(' ') || '—'}</td>
+        <td><span class="tag tag-green">Active</span></td>
+      </tr>`).join('');
+
+  // Upstreams table
+  const utb = document.getElementById('upstreams-tbody');
+  utb.innerHTML = upstreamList.length === 0
+    ? '<tr class="empty-row"><td colspan="5">No upstreams configured. Click "Add Upstream" to create one.</td></tr>'
+    : upstreamList.map(u => `<tr>
+        <td class="code">${u.id || '—'}</td>
+        <td>${u.name || '—'}</td>
+        <td class="code">${Object.entries(u.nodes || {}).map(([h,w]) => `${h}:${w}`).join(', ') || '—'}</td>
+        <td><span class="tag tag-zinc">${u.type || 'roundrobin'}</span></td>
+        <td><span class="tag tag-zinc">passive</span></td>
+      </tr>`).join('');
+
+  // Consumers table
+  const ctb = document.getElementById('consumers-tbody');
+  ctb.innerHTML = consumerList.length === 0
+    ? '<tr class="empty-row"><td colspan="3">No consumers configured. Click "Add Consumer" to create one.</td></tr>'
+    : consumerList.map(c => `<tr>
+        <td class="code">${c.username || '—'}</td>
+        <td>${Object.keys(c.plugins || {}).map(p => `<span class="tag tag-zinc">${p}</span>`).join(' ') || '—'}</td>
+        <td>${c.create_time ? new Date(c.create_time * 1000).toLocaleDateString() : '—'}</td>
+      </tr>`).join('');
+}
+
+// ─── PLUGIN GRID ─────────────────────────────────────────────────
+function buildPlugins() {
+  const ceGrid = document.getElementById('ce-plugin-grid');
+  ceGrid.innerHTML = CE_PLUGINS.map(p => `
+    <div class="plugin-card">
+      <div class="plugin-card-top">
+        <div class="plugin-icon">${icon(p.icon)}</div>
+        <div class="plugin-status-row">
+          <span class="tag tag-green">Active</span>
+          <span class="tag tag-zinc">${p.phase}</span>
+        </div>
+      </div>
+      <div class="plugin-name">${p.name}</div>
+      <div class="plugin-desc">${p.desc}</div>
+    </div>
+  `).join('');
+
+  const eeGrid = document.getElementById('ee-plugin-grid');
+  eeGrid.innerHTML = EE_PLUGINS.map(p => `
+    <div class="plugin-card locked" onclick="showEEModal(${JSON.stringify(p).split('"').join('&quot;')})">
+      <div class="plugin-card-top">
+        <div class="plugin-icon locked-icon">${icon('lock')}</div>
+        <div class="plugin-status-row">
+          <span class="tag tag-ee">Enterprise</span>
+          <span class="tag tag-zinc" style="opacity:0.5">${p.phase}</span>
+        </div>
+      </div>
+      <div class="plugin-name">${p.name}</div>
+      <div class="plugin-desc">${p.desc}</div>
+      <div class="lock-overlay">
+        <div class="lock-overlay-inner">
+          ${icon('lock', 22)}
+          <div class="lock-overlay-title">Enterprise Feature</div>
+          <div class="lock-overlay-desc">Requires Ando Enterprise Edition</div>
+          <span class="lock-overlay-btn">Upgrade to Unlock</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── OVERVIEW PLUGIN LIST ─────────────────────────────────────────
+function buildOverviewPlugins() {
+  const list = document.getElementById('overview-plugins-list');
+  const all = [
+    ...CE_PLUGINS.map(p => ({...p, locked: false})),
+    ...EE_PLUGINS.map(p => ({...p, locked: true}))
+  ];
+  list.innerHTML = all.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span class="code" style="flex:1;font-size:12px;${p.locked?'color:var(--ee-text)':''}">${p.name}</span>
+      ${p.locked
+        ? '<span class="tag tag-ee" style="font-size:10px">Enterprise</span>'
+        : `<span class="tag tag-green" style="font-size:10px">Active</span>`
+      }
+    </div>
+  `).join('');
+}
+
+// ─── COMPARISON TABLE ─────────────────────────────────────────────
+function buildComparison() {
+  const tbody = document.getElementById('comparison-table');
+  tbody.innerHTML = COMPARISON.map(row => `
+    <tr>
+      <td>${row.feature}</td>
+      <td>${row.ce ? '<span class="tag tag-green">✓</span>' : '<span class="tag tag-zinc">—</span>'}</td>
+      <td>${row.ee ? '<span class="tag tag-green">✓</span>' : '<span class="tag tag-zinc">—</span>'}</td>
+    </tr>
+  `).join('');
+}
+
+// ─── EE MODAL ─────────────────────────────────────────────────────
+function showEEModal(p) {
+  if (typeof p === 'string') {
+    try { p = JSON.parse(p.split('&quot;').join('"')); } catch { return; }
+  }
+  document.getElementById('ee-modal-name').textContent = p.name;
+  document.getElementById('ee-modal-desc').textContent = p.desc;
+  document.getElementById('ee-modal-features').innerHTML =
+    (p.features || []).map(f => `<div class="modal-feature">${f}</div>`).join('');
+  document.getElementById('ee-modal').classList.add('open');
+}
+
+function closeEEModal(event) {
+  if (event && event.target !== document.getElementById('ee-modal')) return;
+  document.getElementById('ee-modal').classList.remove('open');
+}
+
+// ─── ADD MODAL ─────────────────────────────────────────────────────
+function showAddModal(type) {
+  const titles = { route: 'Add Route', upstream: 'Add Upstream', consumer: 'Add Consumer' };
+  const forms = {
+    route: `
+      <div class="form-group"><label class="form-label">Route ID</label><input class="form-input" placeholder="route-1" id="af-id"/></div>
+      <div class="form-group"><label class="form-label">URI Pattern</label><input class="form-input" placeholder="/api/v1/*" id="af-uri"/></div>
+      <div class="form-group"><label class="form-label">Upstream ID</label><input class="form-input" placeholder="upstream-1" id="af-upstream"/></div>
+    `,
+    upstream: `
+      <div class="form-group"><label class="form-label">Upstream ID</label><input class="form-input" placeholder="upstream-1" id="af-id"/></div>
+      <div class="form-group"><label class="form-label">Host:Port</label><input class="form-input" placeholder="127.0.0.1:8080" id="af-host"/><div class="form-hint">Weight defaults to 1</div></div>
+    `,
+    consumer: `
+      <div class="form-group"><label class="form-label">Username</label><input class="form-input" placeholder="alice" id="af-id"/></div>
+      <div class="form-group"><label class="form-label">API Key</label><input class="form-input" placeholder="my-secret-key" id="af-key"/><div class="form-hint">Used by the key-auth plugin</div></div>
+    `
+  };
+  document.getElementById('add-modal-title').textContent = titles[type];
+  document.getElementById('add-modal-content').innerHTML = forms[type];
+  document.getElementById('add-modal-submit').onclick = () => submitAdd(type);
+  document.getElementById('add-modal').classList.add('open');
+}
+
+async function submitAdd(type) {
+  const id = document.getElementById('af-id')?.value?.trim();
+  if (!id) { alert('ID is required'); return; }
+
+  let body = {};
+  if (type === 'route') {
+    const uri = document.getElementById('af-uri')?.value?.trim();
+    const upstream = document.getElementById('af-upstream')?.value?.trim();
+    body = { uri, upstream_id: upstream };
+  } else if (type === 'upstream') {
+    const host = document.getElementById('af-host')?.value?.trim();
+    body = { nodes: host ? { [host]: 1 } : {}, type: 'roundrobin' };
+  } else if (type === 'consumer') {
+    const key = document.getElementById('af-key')?.value?.trim();
+    body = { username: id, plugins: key ? { 'key-auth': { key } } : {} };
+  }
+
+  const pathMap = { route: 'routes', upstream: 'upstreams', consumer: 'consumers' };
+  const url = type === 'consumer'
+    ? `${BASE}/consumers/${id}`
+    : `${BASE}/${pathMap[type]}/${id}`;
+
+  try {
+    const r = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (r.ok) {
+      closeAddModal();
+      loadAll();
+    } else {
+      const text = await r.text();
+      alert('Error: ' + text);
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+}
+
+function closeAddModal(event) {
+  if (event && event.target !== document.getElementById('add-modal')) return;
+  document.getElementById('add-modal').classList.remove('open');
+}
+
+// ─── FILTER TABLE ─────────────────────────────────────────────────
+function filterTable(input, tableId) {
+  const q = input.value.toLowerCase();
+  document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// ─── HEALTH CHECK ─────────────────────────────────────────────────
+async function checkHealth() {
+  const data = await apiFetch('/health');
+  const el = document.getElementById('status-text');
+  if (data?.status === 'ok' || data) {
+    el.textContent = 'Running';
+    el.style.color = '';
+  } else {
+    el.textContent = 'Unreachable';
+    el.style.color = 'var(--text-3)';
+    el.style.setProperty('--green', '#71717a');
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────
+buildPlugins();
+buildOverviewPlugins();
+buildComparison();
+loadAll();
+checkHealth();
+setInterval(loadAll, 10000);
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>

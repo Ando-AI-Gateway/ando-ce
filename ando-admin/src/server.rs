@@ -44,6 +44,8 @@ pub async fn start_admin(
 /// Extracted so tests can call this without binding a real port.
 pub fn build_admin_router(state: Arc<AdminState>) -> AxumRouter {
     AxumRouter::new()
+        // Dashboard UI
+        .route("/dashboard", get(handlers::dashboard::dashboard))
         // APISIX-compatible admin API routes
         .route("/apisix/admin/routes/{id}", put(handlers::routes::put_route))
         .route("/apisix/admin/routes/{id}", get(handlers::routes::get_route))
