@@ -240,4 +240,36 @@ mod tests {
         assert!(matches!(result, PluginResult::Continue));
         assert!(ctx.vars.contains_key("_cors_access-control-allow-origin"));
     }
+
+    // ── Plugin trait ─────────────────────────────────────────────
+
+    #[test]
+    fn plugin_name_priority_phases() {
+        assert_eq!(CorsPlugin.name(), "cors");
+        assert_eq!(CorsPlugin.priority(), 2000);
+        assert_eq!(CorsPlugin.phases(), &[Phase::Access]);
+    }
+
+    #[test]
+    fn configure_empty_config_succeeds() {
+        let result = CorsPlugin.configure(&serde_json::json!({}));
+        assert!(result.is_ok(), "Empty cors config should succeed (all defaults)");
+    }
+
+    #[test]
+    fn configure_with_origins_succeeds() {
+        let config = serde_json::json!({
+            "allow_origins": ["https://example.com", "https://app.example.com"],
+            "allow_credentials": true
+        });
+        let result = CorsPlugin.configure(&config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn configure_with_invalid_type_fails() {
+        // allow_origins should be an array, not a string
+        let config = serde_json::json!({ "allow_origins": "not-an-array" });
+        assert!(CorsPlugin.configure(&config).is_err());
+    }
 }

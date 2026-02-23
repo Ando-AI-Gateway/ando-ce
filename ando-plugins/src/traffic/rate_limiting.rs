@@ -191,4 +191,42 @@ mod tests {
             _ => panic!("Expected Response"),
         }
     }
+
+    // ── Plugin trait ─────────────────────────────────────────────
+
+    #[test]
+    fn plugin_name_priority_phases() {
+        assert_eq!(RateLimitingPlugin.name(), "rate-limiting");
+        assert_eq!(RateLimitingPlugin.priority(), 1001);
+        assert_eq!(RateLimitingPlugin.phases(), &[Phase::Access]);
+    }
+
+    #[test]
+    fn configure_with_valid_config_succeeds() {
+        let config = serde_json::json!({ "count": 10, "time_window": 60 });
+        let result = RateLimitingPlugin.configure(&config);
+        assert!(result.is_ok(), "Valid rate-limiting config should succeed");
+    }
+
+    #[test]
+    fn configure_missing_count_fails() {
+        let config = serde_json::json!({ "time_window": 60 });
+        assert!(RateLimitingPlugin.configure(&config).is_err(), "Missing 'count' must fail");
+    }
+
+    #[test]
+    fn configure_missing_time_window_fails() {
+        let config = serde_json::json!({ "count": 10 });
+        assert!(RateLimitingPlugin.configure(&config).is_err(), "Missing 'time_window' must fail");
+    }
+
+    #[test]
+    fn configured_instance_enforces_rate_limit() {
+        let config = serde_json::json!({ "count": 2, "time_window": 60 });
+        let instance = RateLimitingPlugin.configure(&config).unwrap();
+        let mut ctx = make_ctx("5.5.5.5");
+        assert!(matches!(instance.access(&mut ctx), PluginResult::Continue));
+        assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Continue));
+        assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Response { status: 429, .. }));
+    }
 }

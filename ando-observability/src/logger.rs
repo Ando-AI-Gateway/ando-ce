@@ -117,3 +117,72 @@ impl VictoriaLogsExporter {
         batch.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ando_core::config::VictoriaLogsConfig;
+
+    fn disabled_config() -> VictoriaLogsConfig {
+        VictoriaLogsConfig {
+            enabled: false,
+            endpoint: "http://localhost:9428/insert/jsonline".to_string(),
+            batch_size: 100,
+            flush_interval_secs: 5,
+        }
+    }
+
+    fn enabled_config() -> VictoriaLogsConfig {
+        VictoriaLogsConfig {
+            enabled: true,
+            endpoint: "http://localhost:9428/insert/jsonline".to_string(),
+            batch_size: 100,
+            flush_interval_secs: 5,
+        }
+    }
+
+    #[test]
+    fn disabled_constructor_has_no_sender() {
+        let exporter = VictoriaLogsExporter::disabled();
+        assert!(exporter.sender.is_none());
+    }
+
+    #[test]
+    fn new_with_disabled_config_has_no_sender() {
+        let exporter = VictoriaLogsExporter::new(disabled_config());
+        assert!(exporter.sender.is_none());
+    }
+
+    #[test]
+    fn access_log_on_disabled_does_not_panic() {
+        let exporter = VictoriaLogsExporter::disabled();
+        exporter.access_log("route-1", "GET", "/api", 200, 1.5, "127.0.0.1", None);
+        exporter.access_log("route-2", "POST", "/api/users", 201, 2.3, "10.0.0.1", Some("10.0.0.2:8080"));
+        exporter.access_log("route-3", "DELETE", "/item/1", 404, 0.1, "::1", None);
+    }
+
+    #[tokio::test]
+    async fn new_with_enabled_config_has_sender() {
+        let exporter = VictoriaLogsExporter::new(enabled_config());
+        assert!(exporter.sender.is_some());
+    }
+
+    #[tokio::test]
+    async fn access_log_on_enabled_does_not_block() {
+        let exporter = VictoriaLogsExporter::new(enabled_config());
+        // Should not block or panic — try_send returns immediately
+        exporter.access_log("r1", "GET", "/health", 200, 0.5, "127.0.0.1", None);
+        exporter.access_log("r2", "POST", "/api", 404, 1.1, "10.0.0.1", Some("10.0.0.2:8080"));
+        // Give channel consumer a moment
+        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+    }
+
+    #[tokio::test]
+    async fn access_log_backpressure_does_not_panic() {
+        let exporter = VictoriaLogsExporter::new(enabled_config());
+        // Flood the channel (capacity 10_000) — should never panic via try_send
+        for i in 0..10_100u32 {
+            exporter.access_log("r1", "GET", "/", 200, 0.1, &format!("10.0.0.{}", i % 255), None);
+        }
+    }
+}

@@ -213,6 +213,42 @@ mod tests {
             .access(&mut make_ctx("172.16.5.5")), PluginResult::Response { status: 403, .. }));
         let _ = inst;
     }
+
+    // ── Plugin trait ─────────────────────────────────────────────
+
+    #[test]
+    fn plugin_name_priority_phases() {
+        assert_eq!(IpRestrictionPlugin.name(), "ip-restriction");
+        assert_eq!(IpRestrictionPlugin.priority(), 3000);
+        assert_eq!(IpRestrictionPlugin.phases(), &[Phase::Access]);
+    }
+
+    #[test]
+    fn configure_empty_config_succeeds() {
+        let result = IpRestrictionPlugin.configure(&serde_json::json!({}));
+        assert!(result.is_ok(), "Empty ip-restriction config should succeed");
+    }
+
+    #[test]
+    fn configure_with_cidr_lists_succeeds() {
+        let config = serde_json::json!({
+            "allowlist": ["192.168.0.0/24"],
+            "denylist": ["10.0.0.0/8"]
+        });
+        assert!(IpRestrictionPlugin.configure(&config).is_ok());
+    }
+
+    #[test]
+    fn configure_with_invalid_cidr_silently_ignores_bad_entry() {
+        // ip-restriction silently skips unparseable entries instead of failing
+        let config = serde_json::json!({ "denylist": ["not-a-cidr", "10.0.0.0/8"] });
+        let instance = IpRestrictionPlugin.configure(&config).unwrap();
+        // Valid CIDR 10.0.0.0/8 must still be applied
+        assert!(matches!(
+            instance.access(&mut make_ctx("10.1.2.3")),
+            PluginResult::Response { status: 403, .. }
+        ));
+    }
 }
 
 impl Default for IpRestrictionConfig {

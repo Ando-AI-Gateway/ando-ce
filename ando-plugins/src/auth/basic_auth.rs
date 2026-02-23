@@ -190,4 +190,22 @@ mod tests {
         let result = instance().access(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));
     }
+
+    // ── Plugin trait ─────────────────────────────────────────────
+
+    #[test]
+    fn plugin_name_priority_phases() {
+        assert_eq!(BasicAuthPlugin.name(), "basic-auth");
+        assert_eq!(BasicAuthPlugin.priority(), 2520);
+        assert_eq!(BasicAuthPlugin.phases(), &[Phase::Access]);
+    }
+
+    #[test]
+    fn configure_with_any_config_succeeds() {
+        // BasicAuth accepts any config (no required fields)
+        let instance = BasicAuthPlugin.configure(&serde_json::json!({})).unwrap();
+        // Verify the instance works — missing header → 401
+        let mut ctx = make_ctx(vec![]);
+        assert!(matches!(instance.access(&mut ctx), PluginResult::Response { status: 401, .. }));
+    }
 }

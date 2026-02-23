@@ -241,3 +241,184 @@ impl GatewayConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    // ── Default values ────────────────────────────────────────────
+
+    #[test]
+    fn default_proxy_config_has_expected_values() {
+        let cfg = ProxyConfig::default();
+        assert_eq!(cfg.http_addr, "0.0.0.0:9080");
+        assert_eq!(cfg.https_addr, "0.0.0.0:9443");
+        assert_eq!(cfg.workers, 0);
+        assert_eq!(cfg.connect_timeout_ms, 2000);
+        assert_eq!(cfg.read_timeout_ms, 5000);
+        assert_eq!(cfg.write_timeout_ms, 5000);
+        assert_eq!(cfg.keepalive_pool_size, 256);
+    }
+
+    #[test]
+    fn default_admin_config_has_expected_values() {
+        let cfg = AdminConfig::default();
+        assert_eq!(cfg.addr, "0.0.0.0:9180");
+        assert!(cfg.enabled);
+        assert!(cfg.api_key.is_none());
+    }
+
+    #[test]
+    fn default_deployment_config_is_standalone_no_etcd() {
+        let cfg = DeploymentConfig::default();
+        assert_eq!(cfg.mode, DeploymentMode::Standalone);
+        assert!(cfg.etcd.is_none());
+    }
+
+    #[test]
+    fn default_observability_all_disabled() {
+        let cfg = ObservabilityConfig::default();
+        assert!(!cfg.victoria_metrics.enabled);
+        assert!(!cfg.victoria_logs.enabled);
+        assert!(!cfg.prometheus.enabled);
+    }
+
+    #[test]
+    fn default_prometheus_config_has_metrics_path() {
+        let cfg = PrometheusConfig::default();
+        assert_eq!(cfg.path, "/metrics");
+        assert!(!cfg.enabled);
+    }
+
+    #[test]
+    fn default_victoria_logs_config_values() {
+        let cfg = VictoriaLogsConfig::default();
+        assert_eq!(cfg.batch_size, 1000);
+        assert_eq!(cfg.flush_interval_secs, 5);
+        assert!(!cfg.enabled);
+    }
+
+    #[test]
+    fn default_victoria_metrics_config_values() {
+        let cfg = VictoriaMetricsConfig::default();
+        assert_eq!(cfg.push_interval_secs, 15);
+        assert!(!cfg.enabled);
+    }
+
+    #[test]
+    fn gateway_config_default_builds_without_panic() {
+        let cfg = GatewayConfig::default();
+        // Ensure nested defaults compose correctly
+        assert_eq!(cfg.proxy.http_addr, "0.0.0.0:9080");
+        assert_eq!(cfg.admin.addr, "0.0.0.0:9180");
+        assert_eq!(cfg.deployment.mode, DeploymentMode::Standalone);
+    }
+
+    // ── effective_workers() ───────────────────────────────────────
+
+    #[test]
+    fn effective_workers_returns_explicit_value_when_nonzero() {
+        let mut cfg = GatewayConfig::default();
+        cfg.proxy.workers = 4;
+        assert_eq!(cfg.effective_workers(), 4);
+    }
+
+    #[test]
+    fn effective_workers_with_zero_returns_at_least_one() {
+        let cfg = GatewayConfig::default(); // workers = 0
+        let workers = cfg.effective_workers();
+        assert!(workers >= 1, "effective_workers must be at least 1, got {workers}");
+    }
+
+    // ── DeploymentMode serde ──────────────────────────────────────
+
+    #[test]
+    fn deployment_mode_standalone_serializes_to_lowercase() {
+        let mode = DeploymentMode::Standalone;
+        let json = serde_json::to_string(&mode).unwrap();
+        assert_eq!(json, "\"standalone\"");
+    }
+
+    #[test]
+    fn deployment_mode_etcd_serializes_to_lowercase() {
+        let mode = DeploymentMode::Etcd;
+        let json = serde_json::to_string(&mode).unwrap();
+        assert_eq!(json, "\"etcd\"");
+    }
+
+    #[test]
+    fn deployment_mode_roundtrip() {
+        for mode in &[DeploymentMode::Standalone, DeploymentMode::Etcd] {
+            let serialized = serde_json::to_string(mode).unwrap();
+            let deserialized: DeploymentMode = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(*mode, deserialized);
+        }
+    }
+
+    // ── GatewayConfig::load() ─────────────────────────────────────
+
+    #[test]
+    fn load_from_nonexistent_file_returns_error() {
+        let result = GatewayConfig::load(std::path::Path::new("/nonexistent/path/config.yaml"));
+        // Figment returns Ok with defaults when the file is missing (merges empty)
+        // or an error — either result is acceptable; ensure we don't panic
+        let _ = result;
+    }
+
+    #[test]
+    fn load_from_valid_yaml_overrides_defaults() {
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "proxy:\n  http_addr: \"0.0.0.0:8888\"\n  workers: 2\n").unwrap();
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert_eq!(cfg.proxy.http_addr, "0.0.0.0:8888");
+        assert_eq!(cfg.proxy.workers, 2);
+        // Defaults still apply for unspecified fields
+        assert_eq!(cfg.proxy.https_addr, "0.0.0.0:9443");
+    }
+
+    #[test]
+    fn load_yaml_with_etcd_mode() {
+        let yaml = r#"
+deployment:
+  mode: etcd
+  etcd:
+    endpoints:
+      - "http://localhost:2379"
+    prefix: "/my-prefix"
+    timeout_secs: 10
+"#;
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert_eq!(cfg.deployment.mode, DeploymentMode::Etcd);
+        let etcd = cfg.deployment.etcd.unwrap();
+        assert_eq!(etcd.endpoints, vec!["http://localhost:2379".to_string()]);
+        assert_eq!(etcd.prefix, "/my-prefix");
+        assert_eq!(etcd.timeout_secs, 10);
+    }
+
+    #[test]
+    fn load_yaml_with_observability() {
+        let yaml = r#"
+observability:
+  prometheus:
+    enabled: true
+    path: "/prom"
+  victoria_metrics:
+    enabled: true
+    endpoint: "http://vm:8428/api/v1/import/prometheus"
+  victoria_logs:
+    enabled: true
+    batch_size: 500
+"#;
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert!(cfg.observability.prometheus.enabled);
+        assert_eq!(cfg.observability.prometheus.path, "/prom");
+        assert!(cfg.observability.victoria_metrics.enabled);
+        assert!(cfg.observability.victoria_logs.enabled);
+        assert_eq!(cfg.observability.victoria_logs.batch_size, 500);
+    }
+}

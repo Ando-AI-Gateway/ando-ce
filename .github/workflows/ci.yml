@@ -68,7 +68,15 @@ jobs:
           cargo llvm-cov \
             --workspace \
             --lcov \
-            --output-path lcov.info
+            --output-path lcov.info \
+            --ignore-filename-regex '(main\.rs|etcd\.rs|watcher\.rs|ssl\.rs|worker\.rs)'
+          # Exclusions:
+          #   main.rs      — binary entry point, never executed in unit/integration tests
+          #   etcd.rs      — requires a live etcd cluster (integration env only)
+          #   watcher.rs   — requires a live etcd cluster (integration env only)
+          #   ssl.rs       — requires TLS certificate infrastructure
+          #   worker.rs    — OS thread + socket bootstrap (spawn_workers/worker_loop)
+          #                  SharedState and pure logic already covered by integration tests
 
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v4
@@ -77,6 +85,9 @@ jobs:
           files: ando-ce/lcov.info
           fail_ci_if_error: false
 
-      - name: Enforce 70 % line-coverage gate
+      - name: Enforce 85 % line-coverage gate
         working-directory: ando-ce
-        run: cargo llvm-cov report --fail-under-lines 70
+        run: |
+          cargo llvm-cov report \
+            --ignore-filename-regex '(main\.rs|etcd\.rs|watcher\.rs|ssl\.rs|worker\.rs)' \
+            --fail-under-lines 85
