@@ -19,3 +19,6 @@ regex = { workspace = true }
 ipnet = { workspace = true }
 arc-swap = { workspace = true }
 chrono = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"

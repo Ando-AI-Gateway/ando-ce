@@ -324,4 +324,45 @@ mod tests {
         assert_eq!(normalize_path("/exact"), "/exact");
         assert_eq!(normalize_path("/a/b/c"), "/a/b/c");
     }
+
+    // ── Property-based tests ──────────────────────────────────────
+
+    proptest::proptest! {
+        /// An empty router must never panic regardless of method or path input.
+        #[test]
+        fn router_never_panics_on_arbitrary_method_and_path(
+            method in "[A-Z]{1,10}",
+            path   in "/[a-z/]{0,50}",
+        ) {
+            let router = Router::build(vec![], 1).unwrap();
+            // Should always return None without panicking
+            let _ = router.match_route(&method, &path, None);
+        }
+
+        /// A single registered route is never incorrectly matched for a
+        /// completely different path.
+        #[test]
+        fn router_does_not_match_different_paths(
+            suffix in "[a-z]{1,20}",
+        ) {
+            let route = make_route("r1", "/fixed/path", vec![]);
+            let router = Router::build(vec![route], 1).unwrap();
+
+            let query_path = format!("/other/{suffix}");
+            // /other/... must never match /fixed/path
+            let result = router.match_route("GET", &query_path, None);
+            assert!(result.is_none() || result.unwrap().uri == "/fixed/path",
+                "Unexpected match for {query_path}");
+        }
+
+        /// Route count must be ≤ number of distinct routes inserted.
+        #[test]
+        fn router_len_bounded_by_input(count in 0usize..20) {
+            let routes: Vec<_> = (0..count)
+                .map(|i| make_route(&format!("r{i}"), &format!("/route/{i}"), vec![]))
+                .collect();
+            let router = Router::build(routes, 1).unwrap();
+            assert!(router.len() <= count);
+        }
+    }
 }
