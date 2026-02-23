@@ -8,9 +8,11 @@ use axum::{
     routing::{delete, get, put},
     Router as AxumRouter,
 };
+use http::Method;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Notify;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 /// Shared state for the admin API.
@@ -65,5 +67,11 @@ pub fn build_admin_router(state: Arc<AdminState>) -> AxumRouter {
         .route("/apisix/admin/consumers", get(handlers::consumers::list_consumers))
         .route("/apisix/admin/health", get(handlers::health::health_check))
         .route("/apisix/admin/plugins/list", get(handlers::plugins::list_plugins))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([Method::GET, Method::PUT, Method::DELETE, Method::OPTIONS])
+                .allow_headers(Any),
+        )
         .with_state(state)
 }

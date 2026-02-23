@@ -94,6 +94,7 @@ tikv-jemallocator = { version = "0.6", features = ["background_threads"] }
 # ── Axum (admin API — runs on tokio, separate from data plane) ──
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
 
 # ── Crossbeam channels (SPSC broadcast for config updates) ──
 crossbeam-channel = "0.5"
