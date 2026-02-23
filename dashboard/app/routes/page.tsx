@@ -7,11 +7,270 @@ import {
   SearchInput, EmptyState, useConfirm,
 } from "@/components/ui";
 
+// ── Test Request Modal ───────────────────────────────────────────────────────
+
+interface TestHeader { key: string; value: string; id: number }
+
+interface TestResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  durationMs: number;
+}
+
+function TestRequestModal({
+  route,
+  open,
+  onClose,
+}: {
+  route: Route | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const defaultPath = route
+    ? route.uri.replace(/[*{].*$/, "").replace(/\/$/, "") || "/"
+    : "/";
+  const defaultMethod =
+    route?.methods && route.methods.length > 0 ? route.methods[0] : "GET";
+
+  const [proxyBase, setProxyBase] = useState("http://localhost:9080");
+  const [method, setMethod] = useState(defaultMethod);
+  const [path, setPath] = useState(defaultPath);
+  const [headers, setHeaders] = useState<TestHeader[]>([
+    { key: "Content-Type", value: "application/json", id: Date.now() },
+  ]);
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [response, setResponse] = useState<TestResponse | null>(null);
+  const [reqError, setReqError] = useState("");
+
+  // Sync form when route changes
+  function reset(r: Route | null) {
+    const p = r ? r.uri.replace(/[*{].*$/, "").replace(/\/$/, "") || "/" : "/";
+    const m = r?.methods && r.methods.length > 0 ? r.methods[0] : "GET";
+    setMethod(m);
+    setPath(p);
+    setBody("");
+    setResponse(null);
+    setReqError("");
+  }
+
+  function addHeader() {
+    setHeaders((h) => [...h, { key: "", value: "", id: Date.now() }]);
+  }
+
+  function removeHeader(id: number) {
+    setHeaders((h) => h.filter((x) => x.id !== id));
+  }
+
+  function updateHeader(id: number, field: "key" | "value", val: string) {
+    setHeaders((h) => h.map((x) => (x.id === id ? { ...x, [field]: val } : x)));
+  }
+
+  async function sendRequest() {
+    setSending(true);
+    setReqError("");
+    setResponse(null);
+
+    const url = `${proxyBase.replace(/\/$/, "")}${path}`;
+    const reqHeaders: Record<string, string> = {};
+    for (const h of headers) {
+      if (h.key.trim()) reqHeaders[h.key.trim()] = h.value;
+    }
+
+    const t0 = performance.now();
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: reqHeaders,
+        body: ["GET", "HEAD", "DELETE"].includes(method) ? undefined : body || undefined,
+      });
+      const durationMs = Math.round(performance.now() - t0);
+      const resHeaders: Record<string, string> = {};
+      res.headers.forEach((v, k) => { resHeaders[k] = v; });
+      const text = await res.text();
+      setResponse({ status: res.status, statusText: res.statusText, headers: resHeaders, body: text, durationMs });
+    } catch (e) {
+      const durationMs = Math.round(performance.now() - t0);
+      setReqError(`${e instanceof Error ? e.message : String(e)} (${durationMs}ms)`);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const hasBody = !["GET", "HEAD", "DELETE"].includes(method);
+  const statusColor =
+    !response ? "" :
+    response.status < 300 ? "text-green-400" :
+    response.status < 400 ? "text-yellow-400" : "text-red-400";
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => { reset(route); onClose(); }}
+      title={`Test Route: ${route?.id ?? ""}`}
+    >
+      <div className="space-y-3">
+        {/* Proxy base URL */}
+        <FormField label="Proxy base URL">
+          <Input
+            value={proxyBase}
+            onChange={(e) => setProxyBase(e.target.value)}
+            placeholder="http://localhost:9080"
+          />
+        </FormField>
+
+        {/* Method + path row */}
+        <div className="flex gap-2">
+          <div className="w-28">
+            <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+              {["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"].map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex-1">
+            <Input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/api/v1/resource"
+            />
+          </div>
+        </div>
+
+        {/* Full URL preview */}
+        <div className="rounded-md bg-zinc-900 px-3 py-1.5 font-mono text-[10px] text-zinc-500 break-all">
+          {proxyBase.replace(/\/$/, "")}{path}
+        </div>
+
+        {/* Request headers */}
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[11px] font-medium text-zinc-400">Headers</span>
+            <button
+              onClick={addHeader}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300"
+            >
+              + Add
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {headers.map((h) => (
+              <div key={h.id} className="flex gap-1.5">
+                <Input
+                  value={h.key}
+                  onChange={(e) => updateHeader(h.id, "key", e.target.value)}
+                  placeholder="Key"
+                />
+                <Input
+                  value={h.value}
+                  onChange={(e) => updateHeader(h.id, "value", e.target.value)}
+                  placeholder="Value"
+                />
+                <button
+                  onClick={() => removeHeader(h.id)}
+                  className="px-1.5 text-zinc-600 hover:text-red-400"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Body */}
+        {hasBody && (
+          <FormField label="Body (JSON / text)">
+            <textarea
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500 resize-y"
+              rows={4}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder='{"key": "value"}'
+            />
+          </FormField>
+        )}
+
+        {/* Send button */}
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[10px] text-zinc-600">
+            Request is made directly from your browser
+          </span>
+          <Button onClick={sendRequest} disabled={sending}>
+            {sending ? "Sending…" : "Send Request"}
+          </Button>
+        </div>
+
+        {/* Error */}
+        {reqError && (
+          <div className="rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400 font-mono break-all">
+            {reqError}
+          </div>
+        )}
+
+        {/* Response */}
+        {response && (
+          <div className="rounded-md border border-zinc-700 bg-zinc-900">
+            {/* Status bar */}
+            <div className="flex items-center gap-3 border-b border-zinc-800 px-3 py-2">
+              <span className={`font-mono text-sm font-semibold ${statusColor}`}>
+                {response.status} {response.statusText}
+              </span>
+              <span className="text-[10px] text-zinc-600">{response.durationMs}ms</span>
+            </div>
+            {/* Response headers */}
+            {Object.keys(response.headers).length > 0 && (
+              <div className="border-b border-zinc-800 px-3 py-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                  Response Headers
+                </div>
+                <div className="space-y-0.5 font-mono text-[10px]">
+                  {Object.entries(response.headers).map(([k, v]) => (
+                    <div key={k} className="flex gap-2">
+                      <span className="text-zinc-500 min-w-0 shrink-0">{k}:</span>
+                      <span className="text-zinc-300 break-all">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Response body */}
+            <div className="px-3 py-2">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                Body
+              </div>
+              <pre className="max-h-56 overflow-auto font-mono text-[11px] text-zinc-300 whitespace-pre-wrap break-all">
+                {(() => {
+                  try {
+                    return JSON.stringify(JSON.parse(response.body), null, 2);
+                  } catch {
+                    return response.body || "(empty)";
+                  }
+                })()}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <Button variant="secondary" onClick={() => { reset(route); onClose(); }}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Routes Page ──────────────────────────────────────────────────────────────
+
 export default function RoutesPage() {
   const { routes, upstreams, refresh, loading } = useDashboard();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Route | null>(null);
   const [creating, setCreating] = useState(false);
+  const [testing, setTesting] = useState<Route | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
 
   // Form state
@@ -157,6 +416,9 @@ export default function RoutesPage() {
                   </td>
                   <td className="py-2 text-right">
                     <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button variant="ghost" size="sm" onClick={() => setTesting(r)}>
+                        Test
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
                         Edit
                       </Button>
@@ -215,16 +477,40 @@ export default function RoutesPage() {
               {formError}
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={closeModal}>
-              Cancel
+          <div className="flex justify-between gap-2 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const route = editing ?? {
+                  id: formId || "preview",
+                  uri: formUri || "/",
+                  methods: formMethods.split(",").map((m) => m.trim().toUpperCase()).filter(Boolean),
+                  upstream_id: formUpstream || undefined,
+                  status: 1,
+                };
+                setTesting(route as Route);
+              }}
+              disabled={!formUri}
+            >
+              Test Request
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : creating ? "Create" : "Save"}
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={closeModal}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : creating ? "Create" : "Save"}
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>
+
+      <TestRequestModal
+        route={testing}
+        open={!!testing}
+        onClose={() => setTesting(null)}
+      />
 
       <ConfirmDialog />
     </div>
