@@ -113,7 +113,7 @@ function TestRequestModal({
     >
       <div className="space-y-3">
         {/* Proxy base URL */}
-        <FormField label="Proxy base URL">
+        <FormField label="Proxy base URL (Ando data plane, default port 9080)">
           <Input
             value={proxyBase}
             onChange={(e) => setProxyBase(e.target.value)}
