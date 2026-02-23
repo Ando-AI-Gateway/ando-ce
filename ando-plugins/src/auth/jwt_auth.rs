@@ -277,4 +277,100 @@ mod tests {
             Some(&serde_json::Value::String("charlie".to_string()))
         );
     }
+
+    // ── Plugin trait: name / priority / phases ───────────────────
+
+    #[test]
+    fn plugin_name_priority_phases() {
+        assert_eq!(JwtAuthPlugin.name(), "jwt-auth");
+        assert_eq!(JwtAuthPlugin.priority(), 2510);
+        assert_eq!(JwtAuthPlugin.phases(), &[Phase::Access]);
+    }
+
+    // ── configure() — success paths ──────────────────────────────
+
+    #[test]
+    fn configure_hs256_with_secret_succeeds() {
+        let config = serde_json::json!({ "secret": "my-secret", "algorithm": "HS256" });
+        assert!(JwtAuthPlugin.configure(&config).is_ok());
+    }
+
+    #[test]
+    fn configure_hs384_with_secret_succeeds() {
+        let config = serde_json::json!({ "secret": "my-secret", "algorithm": "HS384" });
+        assert!(JwtAuthPlugin.configure(&config).is_ok());
+    }
+
+    #[test]
+    fn configure_hs512_with_secret_succeeds() {
+        let config = serde_json::json!({ "secret": "my-secret", "algorithm": "HS512" });
+        assert!(JwtAuthPlugin.configure(&config).is_ok());
+    }
+
+    #[test]
+    fn configure_with_defaults_uses_hs256() {
+        // Minimal config — algorithm and header use defaults
+        let config = serde_json::json!({ "secret": SECRET });
+        let instance = JwtAuthPlugin.configure(&config).unwrap();
+        // Verify default header "authorization" works
+        let token = make_token("default-user", 3600);
+        let mut ctx = make_ctx(Some(&format!("Bearer {token}")));
+        let result = instance.access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert_eq!(ctx.consumer.as_deref(), Some("default-user"));
+    }
+
+    #[test]
+    fn configure_with_custom_header() {
+        let config = serde_json::json!({ "secret": SECRET, "header": "x-token" });
+        let instance = JwtAuthPlugin.configure(&config).unwrap();
+        let token = make_token("user", 3600);
+        let mut headers = HashMap::new();
+        headers.insert("x-token".to_string(), format!("Bearer {token}"));
+        let mut ctx = PluginContext::new("r1".into(), "1.2.3.4".into(), "GET".into(), "/".into(), headers);
+        assert!(matches!(instance.access(&mut ctx), PluginResult::Continue));
+    }
+
+    // ── configure() — failure paths ──────────────────────────────
+
+    #[test]
+    fn configure_unknown_algorithm_fails() {
+        let config = serde_json::json!({ "secret": "my-secret", "algorithm": "INVALID" });
+        assert!(JwtAuthPlugin.configure(&config).is_err());
+    }
+
+    #[test]
+    fn configure_hmac_without_secret_fails() {
+        let config = serde_json::json!({ "algorithm": "HS256" });
+        let Err(err) = JwtAuthPlugin.configure(&config) else {
+            panic!("expected configure to fail");
+        };
+        assert!(err.to_string().contains("secret"), "error should mention 'secret': {err}");
+    }
+
+    #[test]
+    fn configure_with_invalid_json_type_fails() {
+        let config = serde_json::json!({ "algorithm": 12345 });
+        assert!(JwtAuthPlugin.configure(&config).is_err());
+    }
+
+    // ── Token with no sub claim — no consumer set ─────────────────
+
+    #[test]
+    fn token_without_sub_does_not_set_consumer() {
+        let inst = make_instance();
+        // Build token with no sub field
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let exp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + 3600;
+        let claims = serde_json::json!({ "exp": exp, "role": "admin" });
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(SECRET.as_bytes()),
+        ).unwrap();
+        let mut ctx = make_ctx(Some(&format!("Bearer {token}")));
+        let result = inst.access(&mut ctx);
+        assert!(matches!(result, PluginResult::Continue));
+        assert!(ctx.consumer.is_none());
+    }
 }

@@ -20,7 +20,7 @@ description = "Ando CE — Zero-overhead API Gateway (monoio thread-per-core)"
 
 [workspace.dependencies]
 # ── Runtime: monoio (thread-per-core, io_uring on Linux, kqueue on macOS) ──
-monoio = { version = "0.2", features = ["macros"] }
+monoio = { version = "0.2", features = ["macros", "legacy"] }
 monoio-http = "0.3"
 
 # ── Serialization ──
