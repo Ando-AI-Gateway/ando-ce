@@ -13,6 +13,9 @@ pub struct GatewayConfig {
     pub deployment: DeploymentConfig,
     #[serde(default)]
     pub observability: ObservabilityConfig,
+    /// Compliance policy settings (SOC2 Type II, ISO 27001:2022, HIPAA, GDPR).
+    #[serde(default)]
+    pub compliance: ComplianceConfig,
 }
 
 /// Data plane proxy settings.
@@ -114,6 +117,114 @@ pub struct PrometheusConfig {
     pub path: String,
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Compliance (SOC2 Type II · ISO 27001:2022 · HIPAA · GDPR)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/// Top-level compliance policy block.
+///
+/// When `hipaa = true` or `gdpr = true` the gateway will enforce the minimum
+/// set of controls mandated by that regulation.  Individual sub-sections
+/// (`tls`, `audit_log`, `pii_scrubbing`) can also be tuned directly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplianceConfig {
+    /// Enable HIPAA compliance mode.
+    /// Implies: `audit_log.enabled`, TLS 1.2+, `pii_scrubbing.scrub_headers`.
+    #[serde(default)]
+    pub hipaa: bool,
+    /// Enable GDPR compliance mode.
+    /// Implies: `pii_scrubbing.anonymize_ips`, data-minimisation logging.
+    #[serde(default)]
+    pub gdpr: bool,
+    /// Enable SOC2 Type II mode.
+    /// Implies: `audit_log.enabled`, security-headers plugin, TLS strict.
+    #[serde(default)]
+    pub soc2: bool,
+    /// Enable ISO/IEC 27001:2022 mode.
+    /// Implies: `audit_log.enabled`, TLS 1.2+, `pii_scrubbing.scrub_headers`.
+    #[serde(default)]
+    pub iso27001: bool,
+    #[serde(default)]
+    pub tls: TlsComplianceConfig,
+    #[serde(default)]
+    pub audit_log: AuditLogConfig,
+    #[serde(default)]
+    pub pii_scrubbing: PiiScrubConfig,
+    /// Audit / access-log retention period in days.  0 = unlimited.
+    /// HIPAA § 164.530(j) requires ≥6 years.  SOC2 commonly 1 year.
+    #[serde(default = "default_retention_days")]
+    pub log_retention_days: u32,
+    /// Informational data-residency region tag (e.g. "eu", "us", "apac").
+    /// Used by operators to enforce geographic routing at the infra layer.
+    #[serde(default)]
+    pub data_residency_region: Option<String>,
+}
+
+/// TLS hardening settings.
+///
+/// HIPAA Technical Safeguard 164.312(e)(1), SOC2 CC6.7,
+/// ISO 27001:2022 A.8.24, PCI-DSS 4.0 req 4.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TlsComplianceConfig {
+    /// Minimum TLS version accepted. Must be "TLSv1.2" or "TLSv1.3".
+    /// All four frameworks require ≥ TLS 1.2 for data-in-transit protection.
+    #[serde(default = "default_tls_min_version")]
+    pub min_version: String,
+    /// Restrict cipher suites to the NIST/FIPS-approved set.
+    #[serde(default = "default_true_bool")]
+    pub strict_ciphers: bool,
+    /// HSTS max-age in seconds injected into the security-headers plugin
+    /// (default 31 536 000 = 1 year; Chrome preload requires ≥ 1 year).
+    #[serde(default = "default_hsts_max_age")]
+    pub hsts_max_age_secs: u64,
+}
+
+/// Compliance audit log configuration.
+///
+/// Provides the immutable, tamper-evident record trail required by:
+///   HIPAA 164.312(b) · SOC2 CC6.1/CC7.2 · ISO 27001:2022 A.8.15
+///   GDPR Art. 30 (Records of Processing Activities)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogConfig {
+    /// Emit a structured JSON audit record for every HTTP transaction.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Include a SHA-256 hash of the request body (HIPAA integrity control).
+    /// Disabled by default to avoid overhead on non-PHI routes.
+    #[serde(default)]
+    pub include_request_body_hash: bool,
+    /// Output format: `"json"` (default) or `"text"`.
+    #[serde(default = "default_audit_format")]
+    pub format: String,
+    /// Destination file path.  Empty / None → stdout.
+    #[serde(default)]
+    pub file_path: Option<String>,
+}
+
+/// PII / PHI scrubbing settings.
+///
+/// Satisfies:
+///   HIPAA 164.312(e)(2)(ii) de-identification · GDPR Art. 32 pseudonymisation
+///   SOC2 Confidentiality criteria · ISO 27001:2022 A.8.11 data masking
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PiiScrubConfig {
+    /// Mask well-known sensitive request headers
+    /// (Authorization, Cookie, Set-Cookie, X-Api-Key, X-Auth-Token, …).
+    #[serde(default)]
+    pub scrub_headers: bool,
+    /// Additional header names to mask (case-insensitive).
+    #[serde(default)]
+    pub extra_sensitive_headers: Vec<String>,
+    /// Replace the last octet of IPv4 / last 64 bits of IPv6 with zeros
+    /// in access logs and audit records (GDPR Art. 32).
+    #[serde(default)]
+    pub anonymize_ips: bool,
+    /// List of regex patterns whose matching substrings in the request URI
+    /// are replaced with `[REDACTED]` before logging.
+    #[serde(default)]
+    pub uri_redact_patterns: Vec<String>,
+}
+
 // ── Defaults ──────────────────────────────────────────────────
 
 fn default_http_addr() -> String { "0.0.0.0:9080".into() }
@@ -133,6 +244,11 @@ fn default_push_interval() -> u64 { 15 }
 fn default_batch_size() -> usize { 1000 }
 fn default_flush_interval() -> u64 { 5 }
 fn default_metrics_path() -> String { "/metrics".into() }
+fn default_tls_min_version() -> String { "TLSv1.2".into() }
+fn default_true_bool() -> bool { true }
+fn default_hsts_max_age() -> u64 { 31_536_000 }
+fn default_retention_days() -> u32 { 365 }
+fn default_audit_format() -> String { "json".into() }
 
 // ── Impls ─────────────────────────────────────────────────────
 
@@ -195,6 +311,43 @@ impl Default for PrometheusConfig {
         Self {
             enabled: false,
             path: default_metrics_path(),
+        }
+    }
+}
+
+impl Default for TlsComplianceConfig {
+    fn default() -> Self {
+        Self {
+            min_version: default_tls_min_version(),
+            strict_ciphers: true,
+            hsts_max_age_secs: default_hsts_max_age(),
+        }
+    }
+}
+
+impl Default for AuditLogConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            include_request_body_hash: false,
+            format: default_audit_format(),
+            file_path: None,
+        }
+    }
+}
+
+impl Default for ComplianceConfig {
+    fn default() -> Self {
+        Self {
+            hipaa: false,
+            gdpr: false,
+            soc2: false,
+            iso27001: false,
+            tls: TlsComplianceConfig::default(),
+            audit_log: AuditLogConfig::default(),
+            pii_scrubbing: PiiScrubConfig::default(),
+            log_retention_days: default_retention_days(),
+            data_residency_region: None,
         }
     }
 }
@@ -399,5 +552,79 @@ observability:
         assert!(cfg.observability.victoria_metrics.enabled);
         assert!(cfg.observability.victoria_logs.enabled);
         assert_eq!(cfg.observability.victoria_logs.batch_size, 500);
+    }
+
+    // ── ComplianceConfig ──────────────────────────────────────────
+
+    #[test]
+    fn default_compliance_config_all_disabled() {
+        let cfg = ComplianceConfig::default();
+        assert!(!cfg.hipaa);
+        assert!(!cfg.gdpr);
+        assert!(!cfg.soc2);
+        assert!(!cfg.iso27001);
+        assert!(!cfg.audit_log.enabled);
+        assert!(!cfg.pii_scrubbing.scrub_headers);
+        assert!(!cfg.pii_scrubbing.anonymize_ips);
+        assert_eq!(cfg.log_retention_days, 365);
+        assert!(cfg.data_residency_region.is_none());
+    }
+
+    #[test]
+    fn default_tls_compliance_config() {
+        let cfg = TlsComplianceConfig::default();
+        assert_eq!(cfg.min_version, "TLSv1.2");
+        assert!(cfg.strict_ciphers);
+        assert_eq!(cfg.hsts_max_age_secs, 31_536_000);
+    }
+
+    #[test]
+    fn load_yaml_with_hipaa_compliance() {
+        let yaml = r#"
+compliance:
+  hipaa: true
+  gdpr: true
+  log_retention_days: 2190
+  data_residency_region: "us"
+  tls:
+    min_version: "TLSv1.3"
+    strict_ciphers: true
+    hsts_max_age_secs: 63072000
+  audit_log:
+    enabled: true
+    include_request_body_hash: true
+    format: "json"
+  pii_scrubbing:
+    scrub_headers: true
+    anonymize_ips: true
+    extra_sensitive_headers:
+      - "x-patient-id"
+      - "x-ssn"
+"#;
+        let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
+        write!(tmpfile, "{yaml}").unwrap();
+        let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
+        assert!(cfg.compliance.hipaa);
+        assert!(cfg.compliance.gdpr);
+        assert_eq!(cfg.compliance.log_retention_days, 2190);
+        assert_eq!(cfg.compliance.data_residency_region.as_deref(), Some("us"));
+        assert_eq!(cfg.compliance.tls.min_version, "TLSv1.3");
+        assert_eq!(cfg.compliance.tls.hsts_max_age_secs, 63_072_000);
+        assert!(cfg.compliance.audit_log.enabled);
+        assert!(cfg.compliance.audit_log.include_request_body_hash);
+        assert!(cfg.compliance.pii_scrubbing.scrub_headers);
+        assert!(cfg.compliance.pii_scrubbing.anonymize_ips);
+        assert_eq!(
+            cfg.compliance.pii_scrubbing.extra_sensitive_headers,
+            vec!["x-patient-id".to_string(), "x-ssn".to_string()]
+        );
+    }
+
+    #[test]
+    fn compliance_soc2_mode_defaults() {
+        let mut cfg = ComplianceConfig::default();
+        cfg.soc2 = true;
+        assert_eq!(cfg.tls.min_version, "TLSv1.2");
+        assert_eq!(cfg.log_retention_days, 365);
     }
 }

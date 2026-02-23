@@ -17,3 +17,4 @@ chrono = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 itoa = { workspace = true }
+regex = { workspace = true }

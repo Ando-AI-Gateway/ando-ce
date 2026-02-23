@@ -173,6 +173,7 @@ fn plugin_registry_has_all_plugins_after_register_all() {
         "ip-restriction",
         "rate-limiting",
         "cors",
+        "security-headers",
     ];
     for name in &expected {
         assert!(

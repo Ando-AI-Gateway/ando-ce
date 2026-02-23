@@ -12,4 +12,5 @@ pub fn register_all(registry: &mut PluginRegistry) {
     registry.register(Arc::new(traffic::ip_restriction::IpRestrictionPlugin));
     registry.register(Arc::new(traffic::rate_limiting::RateLimitingPlugin));
     registry.register(Arc::new(traffic::cors::CorsPlugin));
+    registry.register(Arc::new(traffic::security_headers::SecurityHeadersPlugin));
 }

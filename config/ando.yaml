@@ -37,3 +37,88 @@ observability:
   prometheus:
     enabled: false
     path: "/metrics"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Compliance — SOC2 Type II · ISO/IEC 27001:2022
+#              HIPAA · GDPR
+#
+#  All flags are disabled by default.  Enable the
+#  relevant mode(s) for your deployment and tune the
+#  sub-sections as needed.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+compliance:
+  # ── Regulation flags ──────────────────────────────
+  # Setting any flag to true enables the minimum set of
+  # controls required by that regulation.
+
+  # HIPAA Technical Safeguards (45 CFR § 164.312)
+  hipaa: false
+
+  # EU General Data Protection Regulation
+  gdpr: false
+
+  # SOC2 Type II Trust Service Criteria
+  soc2: false
+
+  # ISO/IEC 27001:2022 Annex A controls
+  iso27001: false
+
+  # ── TLS hardening ─────────────────────────────────
+  # HIPAA 164.312(e)(1), SOC2 CC6.7, ISO A.8.24
+  tls:
+    # Minimum TLS version. Must be "TLSv1.2" or "TLSv1.3".
+    # HIPAA/SOC2/ISO27001 all mandate TLS 1.2 as the floor.
+    min_version: "TLSv1.2"
+    # Restrict to NIST/FIPS-approved cipher suites.
+    strict_ciphers: true
+    # HSTS max-age injected by the security-headers plugin (seconds).
+    # 31536000 = 1 year (Chrome preload list minimum).
+    hsts_max_age_secs: 31536000
+
+  # ── Compliance audit log ──────────────────────────
+  # Provides the tamper-evident record required by:
+  #   HIPAA 164.312(b), SOC2 CC7.2, ISO A.8.15, GDPR Art. 30
+  audit_log:
+    # Emit a structured JSON audit record for every request.
+    enabled: false
+    # Include SHA-256 hash of request body in each record.
+    # Provides HIPAA integrity control evidence. Off by default
+    # to avoid overhead on non-PHI routes.
+    include_request_body_hash: false
+    # Output format: "json" (recommended for SIEM) or "text".
+    format: "json"
+    # File path for audit records. Omit for stdout.
+    # file_path: "/var/log/ando/audit.log"
+
+  # ── PII / PHI scrubbing ───────────────────────────
+  # HIPAA 164.312(e)(2)(ii) de-identification
+  # GDPR Art. 32 pseudonymisation & data minimisation
+  pii_scrubbing:
+    # Mask well-known sensitive headers in logs:
+    # Authorization, Cookie, Set-Cookie, X-Api-Key, etc.
+    scrub_headers: false
+    # Additional headers to mask (case-insensitive).
+    extra_sensitive_headers: []
+    #  - "x-patient-id"
+    #  - "x-ssn"
+
+    # Replace last octet of IPv4 / last 64 bits of IPv6 with zeros.
+    # Example: 192.168.1.42 → 192.168.1.0
+    anonymize_ips: false
+
+    # Regex patterns — matching substrings in request URIs are replaced
+    # with [REDACTED] before logging.
+    uri_redact_patterns: []
+    #  - "(?i)ssn=[^&]+"
+    #  - "(?i)dob=[^&]+"
+    #  - "(?i)card=[^&]+"
+
+  # ── Retention & residency ─────────────────────────
+  # Minimum retention period for audit/access logs.
+  # HIPAA § 164.530(j): 6 years = 2190 days.
+  # SOC2 common practice: 1 year = 365 days.
+  log_retention_days: 365
+
+  # Informational data-residency tag (used by operators for
+  # infrastructure-layer routing decisions; not enforced by the gateway).
+  # data_residency_region: "eu"
