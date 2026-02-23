@@ -31,7 +31,19 @@ pub async fn start_admin(
     config: AdminConfig,
     state: Arc<AdminState>,
 ) -> anyhow::Result<()> {
-    let app = AxumRouter::new()
+    let app = build_admin_router(state);
+
+    let listener = tokio::net::TcpListener::bind(&config.addr).await?;
+    info!(addr = %config.addr, "Admin API listening");
+
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// Build the admin Axum router with all APISIX-compatible routes.
+/// Extracted so tests can call this without binding a real port.
+pub fn build_admin_router(state: Arc<AdminState>) -> AxumRouter {
+    AxumRouter::new()
         // APISIX-compatible admin API routes
         .route("/apisix/admin/routes/{id}", put(handlers::routes::put_route))
         .route("/apisix/admin/routes/{id}", get(handlers::routes::get_route))
@@ -47,11 +59,5 @@ pub async fn start_admin(
         .route("/apisix/admin/consumers", get(handlers::consumers::list_consumers))
         .route("/apisix/admin/health", get(handlers::health::health_check))
         .route("/apisix/admin/plugins/list", get(handlers::plugins::list_plugins))
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(&config.addr).await?;
-    info!(addr = %config.addr, "Admin API listening");
-
-    axum::serve(listener, app).await?;
-    Ok(())
+        .with_state(state)
 }
