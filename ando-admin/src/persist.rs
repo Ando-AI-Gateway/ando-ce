@@ -209,6 +209,7 @@ mod tests {
                 .iter()
                 .map(|e| (e.key().clone(), e.value().clone()))
                 .collect(),
+            services: Default::default(),
             upstreams: cache
                 .upstreams
                 .iter()
