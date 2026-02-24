@@ -72,11 +72,11 @@ pub fn save_state(state: &AdminState) {
     };
 
     // Ensure parent directory exists
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            tracing::warn!(error = %e, dir = %parent.display(), "persist: failed to create state dir");
-            return;
-        }
+    if let Some(parent) = path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        tracing::warn!(error = %e, dir = %parent.display(), "persist: failed to create state dir");
+        return;
     }
 
     // Atomic write: tmp file → rename

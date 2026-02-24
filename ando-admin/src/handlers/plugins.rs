@@ -34,7 +34,7 @@ pub async fn list_plugins(State(state): State<Arc<AdminState>>) -> Json<Value> {
             json!({
                 "name":      name,
                 "phase":     phase,
-                "available": registered.iter().any(|p| *p == *name),
+                "available": registered.contains(name),
                 "edition":   "community"
             })
         })

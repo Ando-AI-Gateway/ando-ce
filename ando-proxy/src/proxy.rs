@@ -445,17 +445,16 @@ pub fn compute_upstream_path(route_uri: &str, request_path: &str, strip_prefix: 
         return request_path.to_string();
     }
     // Derive the prefix to strip: everything before the trailing "/*" or "*"
-    let prefix = if route_uri.ends_with("/*") {
-        &route_uri[..route_uri.len() - 2] // "/api/v1/*" → "/api/v1"
-    } else if route_uri.ends_with('*') {
-        &route_uri[..route_uri.len() - 1] // "/api/v1*"  → "/api/v1"
+    let prefix = if let Some(stripped) = route_uri.strip_suffix("/*") {
+        stripped // "/api/v1/*" → "/api/v1"
+    } else if let Some(stripped) = route_uri.strip_suffix('*') {
+        stripped // "/api/v1*"  → "/api/v1"
     } else {
         // Exact route: strip the whole path, forward "/"
         return "/".to_string();
     };
 
-    if request_path.starts_with(prefix) {
-        let rest = &request_path[prefix.len()..];
+    if let Some(rest) = request_path.strip_prefix(prefix) {
         if rest.is_empty() || rest == "/" {
             "/".to_string()
         } else {
