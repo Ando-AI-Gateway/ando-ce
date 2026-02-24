@@ -25,19 +25,14 @@ jobs:
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "ando-ce -> target"
 
       - name: Check formatting
-        working-directory: ando-ce
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        working-directory: ando-ce
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        working-directory: ando-ce
         run: cargo test --workspace --all-features
 
   coverage:
@@ -56,14 +51,11 @@ jobs:
 
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "ando-ce -> target"
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Generate coverage report
-        working-directory: ando-ce
         run: |
           cargo llvm-cov \
             --workspace \
@@ -82,11 +74,10 @@ jobs:
         uses: codecov/codecov-action@v4
         if: ${{ always() }}
         with:
-          files: ando-ce/lcov.info
+          files: ./lcov.info
           fail_ci_if_error: false
 
       - name: Enforce 85 % line-coverage gate
-        working-directory: ando-ce
         run: |
           cargo llvm-cov report \
             --ignore-filename-regex '(main\.rs|etcd\.rs|watcher\.rs|ssl\.rs|worker\.rs)' \
