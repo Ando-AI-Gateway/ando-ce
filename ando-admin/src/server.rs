@@ -101,6 +101,22 @@ pub fn build_admin_router(state: Arc<AdminState>) -> AxumRouter {
             "/apisix/admin/consumers",
             get(handlers::consumers::list_consumers),
         )
+        .route(
+            "/apisix/admin/services/{id}",
+            put(handlers::services::put_service),
+        )
+        .route(
+            "/apisix/admin/services/{id}",
+            get(handlers::services::get_service),
+        )
+        .route(
+            "/apisix/admin/services/{id}",
+            delete(handlers::services::delete_service),
+        )
+        .route(
+            "/apisix/admin/services",
+            get(handlers::services::list_services),
+        )
         .route("/apisix/admin/health", get(handlers::health::health_check))
         .route(
             "/apisix/admin/plugins/list",

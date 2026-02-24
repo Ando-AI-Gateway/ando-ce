@@ -286,7 +286,7 @@ function TestRequestModal({
 // ── Routes Page ──────────────────────────────────────────────────────────────
 
 export default function RoutesPage() {
-  const { routes, upstreams, refresh, loading } = useDashboard();
+  const { routes, services, upstreams, refresh, loading } = useDashboard();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Route | null>(null);
   const [creating, setCreating] = useState(false);
@@ -298,6 +298,9 @@ export default function RoutesPage() {
   const [formName, setFormName] = useState("");
   const [formUri, setFormUri] = useState("");
   const [formMethods, setFormMethods] = useState<string[]>(["GET"]);
+  // Route target: "service" | "upstream" | "inline"
+  const [formTarget, setFormTarget] = useState<"service" | "upstream" | "inline">("upstream");
+  const [formService, setFormService] = useState("");
   const [formUpstream, setFormUpstream] = useState("");
   const [formInlineNodes, setFormInlineNodes] = useState("");
   const [formStripPrefix, setFormStripPrefix] = useState(false);
@@ -316,6 +319,8 @@ export default function RoutesPage() {
     setFormName("");
     setFormUri("");
     setFormMethods(["GET"]);
+    setFormTarget("upstream");
+    setFormService("");
     setFormUpstream("");
     setFormInlineNodes("");
     setFormStripPrefix(false);
@@ -329,14 +334,25 @@ export default function RoutesPage() {
     setFormName(r.name ?? "");
     setFormUri(r.uri);
     setFormMethods(r.methods && r.methods.length > 0 ? r.methods : ["GET"]);
-    setFormUpstream(r.upstream_id ?? "");
-    // Show inline nodes if the route has no upstream_id but has an inline upstream
-    const inlineNodes = r.upstream_id
-      ? ""
-      : Object.entries(r.upstream?.nodes ?? {})
-          .map(([addr, w]) => w === 1 ? addr : `${addr}:${w}`)
-          .join(", ");
-    setFormInlineNodes(inlineNodes);
+    if (r.service_id) {
+      setFormTarget("service");
+      setFormService(r.service_id);
+      setFormUpstream("");
+      setFormInlineNodes("");
+    } else if (r.upstream_id) {
+      setFormTarget("upstream");
+      setFormService("");
+      setFormUpstream(r.upstream_id);
+      setFormInlineNodes("");
+    } else {
+      setFormTarget("inline");
+      setFormService("");
+      setFormUpstream("");
+      const inlineNodes = Object.entries(r.upstream?.nodes ?? {})
+        .map(([addr, w]) => (w === 1 ? addr : `${addr}:${w}`))
+        .join(", ");
+      setFormInlineNodes(inlineNodes);
+    }
     setFormStripPrefix(r.strip_prefix ?? false);
     setFormError("");
     setCreating(false);
@@ -358,15 +374,17 @@ export default function RoutesPage() {
     const methods = formMethods.length > 0 ? formMethods : ["GET"];
     const body: Record<string, unknown> = { uri: formUri, methods, strip_prefix: formStripPrefix };
     if (formName) body.name = formName;
-    if (formUpstream) {
+
+    if (formTarget === "service" && formService) {
+      body.service_id = formService;
+    } else if (formTarget === "upstream" && formUpstream) {
       body.upstream_id = formUpstream;
-    } else if (formInlineNodes.trim()) {
+    } else if (formTarget === "inline" && formInlineNodes.trim()) {
       // Parse "host:port[:weight], ..." → { "host:port": weight }
       const nodes: Record<string, number> = {};
       formInlineNodes.split(",").forEach((s) => {
         const t = s.trim();
         if (!t) return;
-        // Split on last colon to detect optional weight suffix
         const lastColon = t.lastIndexOf(":");
         if (lastColon > 0) {
           const maybeWeight = Number(t.slice(lastColon + 1));
@@ -379,9 +397,7 @@ export default function RoutesPage() {
           nodes[t] = 1;
         }
       });
-      if (Object.keys(nodes).length > 0) {
-        body.upstream = { nodes };
-      }
+      if (Object.keys(nodes).length > 0) body.upstream = { nodes };
     }
     const res = await apiPut(`/routes/${formId}`, body);
     setSaving(false);
@@ -431,7 +447,7 @@ export default function RoutesPage() {
                 <th className="pb-2 pr-3">Name</th>
                 <th className="pb-2 pr-3">Methods</th>
                 <th className="pb-2 pr-3">URI</th>
-                <th className="pb-2 pr-3">Upstream</th>
+                <th className="pb-2 pr-3">Target</th>
                 <th className="pb-2 pr-3">Plugins</th>
                 <th className="pb-2 pr-3">Status</th>
                 <th className="pb-2" />
@@ -455,7 +471,15 @@ export default function RoutesPage() {
                       <span className="ml-1.5 rounded bg-indigo-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-400">strip</span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 font-mono text-zinc-500">{r.upstream_id ?? "inline"}</td>
+                  <td className="py-2 pr-3 font-mono text-zinc-500">
+                    {r.service_id ? (
+                      <><Tag color="amber">svc</Tag>{" "}{r.service_id}</>
+                    ) : r.upstream_id ? (
+                      r.upstream_id
+                    ) : (
+                      "inline"
+                    )}
+                  </td>
                   <td className="py-2 pr-3">
                     {r.plugins ? (
                       <div className="flex flex-wrap gap-1">
@@ -542,17 +566,49 @@ export default function RoutesPage() {
               })}
             </div>
           </FormField>
-          <FormField label="Upstream" hint="Select a named upstream or leave as None to specify an inline node below.">
-            <Select value={formUpstream} onChange={(e) => setFormUpstream(e.target.value)}>
-              <option value="">None (inline)</option>
-              {upstreams.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name ?? u.id}
-                </option>
+          <FormField label="Target" hint="Route → Service → Upstream hierarchy. Choose how this route resolves its backend.">
+            <div className="flex gap-1 pt-1">
+              {(["service", "upstream", "inline"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setFormTarget(opt)}
+                  className={`rounded px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
+                    formTarget === opt
+                      ? "bg-indigo-500/20 text-indigo-400 ring-1 ring-inset ring-indigo-500/40"
+                      : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                  }`}
+                >
+                  {opt}
+                </button>
               ))}
-            </Select>
+            </div>
           </FormField>
-          {!formUpstream && (
+          {formTarget === "service" && (
+            <FormField label="Service" hint="Services bundle an upstream + shared plugin config. Create one in the Services page.">
+              <Select value={formService} onChange={(e) => setFormService(e.target.value)}>
+                <option value="">— select a service —</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name ? `${s.name} (${s.id})` : s.id}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          )}
+          {formTarget === "upstream" && (
+            <FormField label="Upstream" hint="Select a named upstream configured in the Upstreams page.">
+              <Select value={formUpstream} onChange={(e) => setFormUpstream(e.target.value)}>
+                <option value="">— select an upstream —</option>
+                {upstreams.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name ? `${u.name} (${u.id})` : u.id}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          )}
+          {formTarget === "inline" && (
             <FormField
               label="Inline node"
               hint="host:port or host:port:weight — e.g. 127.0.0.1:3001 or 10.0.0.1:8080:10. Multiple nodes: comma-separated."

@@ -13,6 +13,7 @@
 use crate::server::AdminState;
 use ando_core::consumer::Consumer;
 use ando_core::route::Route;
+use ando_core::service::Service;
 use ando_core::upstream::Upstream;
 use ando_store::cache::ConfigCache;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,8 @@ use std::path::Path;
 pub struct PersistedState {
     #[serde(default)]
     pub routes: HashMap<String, Route>,
+    #[serde(default)]
+    pub services: HashMap<String, Service>,
     #[serde(default)]
     pub upstreams: HashMap<String, Upstream>,
     #[serde(default)]
@@ -40,11 +43,17 @@ pub fn save_state(state: &AdminState) {
         None => return,
     };
 
-    // Snapshot the three maps
+    // Snapshot the four maps
     let persisted = PersistedState {
         routes: state
             .cache
             .routes
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect(),
+        services: state
+            .cache
+            .services
             .iter()
             .map(|e| (e.key().clone(), e.value().clone()))
             .collect(),
@@ -122,11 +131,15 @@ pub fn load_state(path: &Path, cache: &ConfigCache) {
     };
 
     let routes_count = persisted.routes.len();
+    let services_count = persisted.services.len();
     let upstreams_count = persisted.upstreams.len();
     let consumers_count = persisted.consumers.len();
 
     for (k, v) in persisted.routes {
         cache.routes.insert(k, v);
+    }
+    for (k, v) in persisted.services {
+        cache.services.insert(k, v);
     }
     for (k, v) in persisted.upstreams {
         cache.upstreams.insert(k, v);
@@ -138,6 +151,7 @@ pub fn load_state(path: &Path, cache: &ConfigCache) {
 
     tracing::info!(
         routes = routes_count,
+        services = services_count,
         upstreams = upstreams_count,
         consumers = consumers_count,
         path = %path.display(),

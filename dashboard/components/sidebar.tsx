@@ -9,7 +9,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ReactNode;
-  countKey?: "routes" | "upstreams" | "consumers";
+  countKey?: "routes" | "services" | "upstreams" | "consumers";
 };
 type SidebarItem = SectionHeader | NavItem;
 
@@ -41,6 +41,19 @@ const sections: SidebarItem[] = [
         <line x1="6" y1="1" x2="6" y2="4" />
         <line x1="10" y1="1" x2="10" y2="4" />
         <line x1="14" y1="1" x2="14" y2="4" />
+      </svg>
+    ),
+  },
+  {
+    href: "/services",
+    label: "Services",
+    countKey: "services" as const,
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="2" y="7" width="20" height="14" rx="2" />
+        <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+        <line x1="12" y1="12" x2="12" y2="16" />
+        <line x1="10" y1="14" x2="14" y2="14" />
       </svg>
     ),
   },
@@ -95,10 +108,11 @@ const sections: SidebarItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { routes, upstreams, consumers } = useDashboard();
+  const { routes, services, upstreams, consumers } = useDashboard();
 
   const counts: Record<string, number> = {
     routes: routes.length,
+    services: services.length,
     upstreams: upstreams.length,
     consumers: consumers.length,
   };

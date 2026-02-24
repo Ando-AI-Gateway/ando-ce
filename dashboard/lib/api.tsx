@@ -8,11 +8,21 @@ export interface Route {
   name?: string;
   uri: string;
   methods?: string[];
+  service_id?: string;
   upstream_id?: string;
   upstream?: { nodes?: Record<string, number> };
   plugins?: Record<string, unknown>;
   status?: number;
   strip_prefix?: boolean;
+}
+
+export interface Service {
+  id: string;
+  name?: string;
+  desc?: string;
+  upstream_id?: string;
+  upstream?: { nodes?: Record<string, number>; type?: string };
+  plugins?: Record<string, unknown>;
 }
 
 export interface Upstream {
@@ -30,6 +40,7 @@ export interface Consumer {
 
 interface DashboardState {
   routes: Route[];
+  services: Service[];
   upstreams: Upstream[];
   consumers: Consumer[];
   healthy: boolean;
@@ -61,6 +72,7 @@ const API_BASE =
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DashboardState>({
     routes: [],
+    services: [],
     upstreams: [],
     consumers: [],
     healthy: true,
@@ -71,9 +83,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [routesRes, upstreamsRes, consumersRes, healthRes] =
+      const [routesRes, servicesRes, upstreamsRes, consumersRes, healthRes] =
         await Promise.all([
           fetch(`${API_BASE}/routes`).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${API_BASE}/services`).then((r) => (r.ok ? r.json() : null)),
           fetch(`${API_BASE}/upstreams`).then((r) => (r.ok ? r.json() : null)),
           fetch(`${API_BASE}/consumers`).then((r) => (r.ok ? r.json() : null)),
           fetch(`${API_BASE}/health`).then((r) => (r.ok ? r.json() : null)),
@@ -81,6 +94,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
       setState({
         routes: routesRes?.list ?? routesRes?.routes ?? [],
+        services: servicesRes?.list ?? servicesRes?.services ?? [],
         upstreams: upstreamsRes?.list ?? upstreamsRes?.upstreams ?? [],
         consumers: consumersRes?.list ?? consumersRes?.consumers ?? [],
         healthy: healthRes?.status === "ok" || !!healthRes,
