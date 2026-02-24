@@ -108,7 +108,8 @@ const sections: SidebarItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { routes, services, upstreams, consumers } = useDashboard();
+  const { routes, services, upstreams, consumers, edition } = useDashboard();
+  const isEnterprise = edition === "enterprise";
 
   const counts: Record<string, number> = {
     routes: routes.length,
@@ -129,7 +130,7 @@ export function Sidebar() {
         <div>
           <div className="text-sm font-semibold tracking-tight">Ando</div>
           <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-            Community Edition
+            {isEnterprise ? "Enterprise Edition" : "Community Edition"}
           </div>
         </div>
       </div>
@@ -179,23 +180,34 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Upgrade card */}
-      <div className="mx-3 mb-3 rounded-lg border border-stone-800 bg-stone-900/40 p-3">
-        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">
-          Enterprise Edition
+      {/* Upgrade card / EE badge */}
+      {isEnterprise ? (
+        <div className="mx-3 mb-3 rounded-lg border border-indigo-800/40 bg-indigo-900/20 p-3">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+            Enterprise Edition
+          </div>
+          <p className="text-[11px] leading-relaxed text-indigo-300/60">
+            All features and plugins are unlocked.
+          </p>
         </div>
-        <p className="mb-2 text-[11px] leading-relaxed text-stone-600">
-          Unlock 6 more plugins, clustering, RBAC &amp; priority support.
-        </p>
-        <a
-          href="https://andolabs.org/enterprise"
-          target="_blank"
-          rel="noopener"
-          className="inline-block rounded-md bg-stone-700 px-2.5 py-1 text-[10px] font-semibold text-stone-200 transition-colors hover:bg-stone-600"
-        >
-          Learn More →
-        </a>
-      </div>
+      ) : (
+        <div className="mx-3 mb-3 rounded-lg border border-stone-800 bg-stone-900/40 p-3">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+            Enterprise Edition
+          </div>
+          <p className="mb-2 text-[11px] leading-relaxed text-stone-600">
+            Unlock 6 more plugins, clustering, RBAC &amp; priority support.
+          </p>
+          <a
+            href="https://andolabs.org/enterprise"
+            target="_blank"
+            rel="noopener"
+            className="inline-block rounded-md bg-stone-700 px-2.5 py-1 text-[10px] font-semibold text-stone-200 transition-colors hover:bg-stone-600"
+          >
+            Learn More →
+          </a>
+        </div>
+      )}
     </aside>
   );
 }

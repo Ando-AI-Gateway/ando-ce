@@ -55,6 +55,7 @@ const TAG_COLORS = {
   red: "border-red-500/20 bg-red-500/10 text-red-400",
   blue: "border-blue-500/20 bg-blue-500/10 text-blue-400",
   zinc: "border-zinc-700/50 bg-zinc-800/50 text-zinc-400",
+  indigo: "border-indigo-500/30 bg-indigo-500/10 text-indigo-400",
   ee: "border-stone-600/30 bg-stone-800/40 text-stone-400",
 };
 

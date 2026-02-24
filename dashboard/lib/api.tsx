@@ -38,6 +38,14 @@ export interface Consumer {
   create_time?: number;
 }
 
+export interface PersistenceInfo {
+  mode: "file" | "none";
+  path: string | null;
+  file_exists: boolean;
+  size_bytes: number | null;
+  last_modified_unix: number | null;
+}
+
 interface DashboardState {
   routes: Route[];
   services: Service[];
@@ -48,6 +56,8 @@ interface DashboardState {
   error: string | null;
   /** "community" | "enterprise" — from /health response */
   edition: string;
+  version: string;
+  persistence: PersistenceInfo;
 }
 
 interface DashboardCtx extends DashboardState {
@@ -79,6 +89,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     loading: true,
     error: null,
     edition: "community",
+    version: "",
+    persistence: { mode: "none", path: null, file_exists: false, size_bytes: null, last_modified_unix: null },
   });
 
   const refresh = useCallback(async () => {
@@ -101,6 +113,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         loading: false,
         error: null,
         edition: healthRes?.edition ?? "community",
+        version: healthRes?.version ?? "",
+        persistence: healthRes?.persistence ?? { mode: "none", path: null, file_exists: false, size_bytes: null, last_modified_unix: null },
       });
     } catch (e) {
       setState((prev) => ({

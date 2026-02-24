@@ -15,7 +15,8 @@ const META: Record<string, { title: string; sub: string }> = {
 
 export function Topbar() {
   const pathname = usePathname();
-  const { healthy } = useDashboard();
+  const { healthy, edition } = useDashboard();
+  const isEnterprise = edition === "enterprise";
 
   // Strip trailing slash for lookup
   const key = pathname.replace(/\/$/, "") || "/dashboard";
@@ -38,7 +39,7 @@ export function Topbar() {
           />
           {healthy ? "Healthy" : "Unhealthy"}
         </div>
-        <Tag color="zinc">CE</Tag>
+        <Tag color={isEnterprise ? "indigo" : "zinc"}>{isEnterprise ? "EE" : "CE"}</Tag>
       </div>
     </header>
   );
