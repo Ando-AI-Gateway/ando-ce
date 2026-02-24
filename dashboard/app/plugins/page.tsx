@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { CE_PLUGINS, EE_PLUGINS, type PluginInfo } from "@/lib/plugins";
+import { useDashboard } from "@/lib/api";
 import { Tag, Modal, Button } from "@/components/ui";
 
 const ICONS: Record<string, (size?: number) => ReactNode> = {
@@ -92,20 +93,39 @@ function PluginCard({ plugin, locked, onClick }: { plugin: PluginInfo; locked?: 
 
 export default function PluginsPage() {
   const [selectedPlugin, setSelectedPlugin] = useState<PluginInfo | null>(null);
+  const { edition } = useDashboard();
+  const isEnterprise = edition === "enterprise";
 
   return (
     <div className="space-y-6">
       {/* Notice */}
-      <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-        <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+      <div className={`flex items-start gap-3 rounded-xl border p-4 ${
+        isEnterprise
+          ? "border-indigo-500/30 bg-indigo-500/5"
+          : "border-amber-500/20 bg-amber-500/5"
+      }`}>
+        <svg className={`mt-0.5 h-4 w-4 shrink-0 ${isEnterprise ? "text-indigo-400" : "text-amber-500"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          {isEnterprise
+            ? <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            : <><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></>}
         </svg>
         <div className="text-xs leading-relaxed text-zinc-400">
-          You are running <span className="font-semibold text-zinc-200">Ando Community Edition</span>.
-          Enterprise plugins are visible below but require a license to enable.{" "}
-          <a href="https://andolabs.org/enterprise" target="_blank" rel="noopener" className="font-semibold text-amber-500 hover:text-amber-400">
-            Learn more &rarr;
-          </a>
+          {isEnterprise ? (
+            <>
+              You are running{" "}
+              <span className="font-semibold text-zinc-200">Ando Enterprise Edition</span>.
+              All {CE_PLUGINS.length + EE_PLUGINS.length} plugins are unlocked and available.
+            </>
+          ) : (
+            <>
+              You are running{" "}
+              <span className="font-semibold text-zinc-200">Ando Community Edition</span>.
+              Enterprise plugins are visible below but require a license to enable.{" "}
+              <a href="https://andolabs.org/enterprise" target="_blank" rel="noopener" className="font-semibold text-amber-500 hover:text-amber-400">
+                Learn more &rarr;
+              </a>
+            </>
+          )}
         </div>
       </div>
 
@@ -124,17 +144,30 @@ export default function PluginsPage() {
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-zinc-800" />
         <div className="flex items-center gap-1.5 whitespace-nowrap text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-          {getIcon("lock", 12)} Enterprise Edition &middot; {EE_PLUGINS.length} plugins locked
+          {isEnterprise ? (
+            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> Enterprise Edition &middot; {EE_PLUGINS.length} plugins active</>
+          ) : (
+            <>{getIcon("lock", 12)} Enterprise Edition &middot; {EE_PLUGINS.length} plugins locked</>
+          )}
         </div>
         <div className="h-px flex-1 bg-zinc-800" />
       </div>
 
       {/* EE Plugins */}
       <div>
-        <p className="mb-4 text-xs text-stone-600">These plugins require Ando Enterprise Edition. Hover to see details.</p>
+        <p className="mb-4 text-xs text-zinc-600">
+          {isEnterprise
+            ? "Enterprise plugins are active on this instance."
+            : "These plugins require Ando Enterprise Edition. Hover to see details."}
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {EE_PLUGINS.map((p) => (
-            <PluginCard key={p.name} plugin={p} locked onClick={() => setSelectedPlugin(p)} />
+            <PluginCard
+              key={p.name}
+              plugin={p}
+              locked={!isEnterprise}
+              onClick={!isEnterprise ? () => setSelectedPlugin(p) : undefined}
+            />
           ))}
         </div>
       </div>

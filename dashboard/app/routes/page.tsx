@@ -297,8 +297,9 @@ export default function RoutesPage() {
   const [formId, setFormId] = useState("");
   const [formName, setFormName] = useState("");
   const [formUri, setFormUri] = useState("");
-  const [formMethods, setFormMethods] = useState("");
+  const [formMethods, setFormMethods] = useState<string[]>(["GET"]);
   const [formUpstream, setFormUpstream] = useState("");
+  const [formInlineNodes, setFormInlineNodes] = useState("");
   const [formStripPrefix, setFormStripPrefix] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -314,8 +315,9 @@ export default function RoutesPage() {
     setFormId("");
     setFormName("");
     setFormUri("");
-    setFormMethods("GET");
+    setFormMethods(["GET"]);
     setFormUpstream("");
+    setFormInlineNodes("");
     setFormStripPrefix(false);
     setFormError("");
     setEditing(null);
@@ -326,8 +328,15 @@ export default function RoutesPage() {
     setFormId(r.id);
     setFormName(r.name ?? "");
     setFormUri(r.uri);
-    setFormMethods((r.methods ?? []).join(", "));
+    setFormMethods(r.methods && r.methods.length > 0 ? r.methods : ["GET"]);
     setFormUpstream(r.upstream_id ?? "");
+    // Show inline nodes if the route has no upstream_id but has an inline upstream
+    const inlineNodes = r.upstream_id
+      ? ""
+      : Object.entries(r.upstream?.nodes ?? {})
+          .map(([addr, w]) => w === 1 ? addr : `${addr}:${w}`)
+          .join(", ");
+    setFormInlineNodes(inlineNodes);
     setFormStripPrefix(r.strip_prefix ?? false);
     setFormError("");
     setCreating(false);
@@ -346,13 +355,34 @@ export default function RoutesPage() {
     }
     setSaving(true);
     setFormError("");
-    const methods = formMethods
-      .split(",")
-      .map((m) => m.trim().toUpperCase())
-      .filter(Boolean);
+    const methods = formMethods.length > 0 ? formMethods : ["GET"];
     const body: Record<string, unknown> = { uri: formUri, methods, strip_prefix: formStripPrefix };
     if (formName) body.name = formName;
-    if (formUpstream) body.upstream_id = formUpstream;
+    if (formUpstream) {
+      body.upstream_id = formUpstream;
+    } else if (formInlineNodes.trim()) {
+      // Parse "host:port[:weight], ..." → { "host:port": weight }
+      const nodes: Record<string, number> = {};
+      formInlineNodes.split(",").forEach((s) => {
+        const t = s.trim();
+        if (!t) return;
+        // Split on last colon to detect optional weight suffix
+        const lastColon = t.lastIndexOf(":");
+        if (lastColon > 0) {
+          const maybeWeight = Number(t.slice(lastColon + 1));
+          if (!isNaN(maybeWeight) && maybeWeight > 0 && t.slice(lastColon + 1) !== "") {
+            nodes[t.slice(0, lastColon)] = maybeWeight;
+          } else {
+            nodes[t] = 1;
+          }
+        } else {
+          nodes[t] = 1;
+        }
+      });
+      if (Object.keys(nodes).length > 0) {
+        body.upstream = { nodes };
+      }
+    }
     const res = await apiPut(`/routes/${formId}`, body);
     setSaving(false);
     if (res.ok) {
@@ -487,14 +517,32 @@ export default function RoutesPage() {
           <FormField label="URI" hint="The path pattern to match. Use /* for prefix matching — e.g. /api/users/* matches /api/users/123.">
             <Input value={formUri} onChange={(e) => setFormUri(e.target.value)} placeholder="e.g. /api/users/*" />
           </FormField>
-          <FormField label="Methods" hint="Comma-separated HTTP methods this route accepts. Leave as GET for read-only, or add POST, PUT, DELETE.">
-            <Input
-              value={formMethods}
-              onChange={(e) => setFormMethods(e.target.value)}
-              placeholder="e.g. GET, POST, PUT, DELETE"
-            />
+          <FormField label="Methods" hint="Click to toggle. At least one method required. No selection defaults to GET.">
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => {
+                const active = formMethods.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() =>
+                      setFormMethods((prev) =>
+                        active ? prev.filter((x) => x !== m) : [...prev, m]
+                      )
+                    }
+                    className={`rounded px-2.5 py-1 font-mono text-xs font-semibold transition-colors ${
+                      active
+                        ? "bg-indigo-500/20 text-indigo-400 ring-1 ring-inset ring-indigo-500/40"
+                        : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
           </FormField>
-          <FormField label="Upstream" hint="The backend service to forward matched requests to. Select 'None' to define nodes inline.">
+          <FormField label="Upstream" hint="Select a named upstream or leave as None to specify an inline node below.">
             <Select value={formUpstream} onChange={(e) => setFormUpstream(e.target.value)}>
               <option value="">None (inline)</option>
               {upstreams.map((u) => (
@@ -504,6 +552,18 @@ export default function RoutesPage() {
               ))}
             </Select>
           </FormField>
+          {!formUpstream && (
+            <FormField
+              label="Inline node"
+              hint="host:port or host:port:weight — e.g. 127.0.0.1:3001 or 10.0.0.1:8080:10. Multiple nodes: comma-separated."
+            >
+              <Input
+                value={formInlineNodes}
+                onChange={(e) => setFormInlineNodes(e.target.value)}
+                placeholder="e.g. 127.0.0.1:3001"
+              />
+            </FormField>
+          )}
           <FormField
             label="Strip URI prefix"
             hint="When enabled, the route's URI prefix is stripped before forwarding. E.g. route /api/v1/* with strip prefix → upstream receives /users instead of /api/v1/users."
@@ -530,7 +590,7 @@ export default function RoutesPage() {
                 const route = editing ?? {
                   id: formId || "preview",
                   uri: formUri || "/",
-                  methods: formMethods.split(",").map((m) => m.trim().toUpperCase()).filter(Boolean),
+                  methods: formMethods.length > 0 ? formMethods : ["GET"],
                   upstream_id: formUpstream || undefined,
                   status: 1,
                 };

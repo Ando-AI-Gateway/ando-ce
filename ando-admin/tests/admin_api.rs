@@ -25,6 +25,7 @@ fn make_state() -> Arc<AdminState> {
         plugin_registry: Arc::new(PluginRegistry::new()),
         config_changed: Arc::new(Notify::new()),
         state_file: None, // tests run in-memory, no disk I/O
+        edition: "community",
     })
 }
 

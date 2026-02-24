@@ -9,6 +9,7 @@ export interface Route {
   uri: string;
   methods?: string[];
   upstream_id?: string;
+  upstream?: { nodes?: Record<string, number> };
   plugins?: Record<string, unknown>;
   status?: number;
   strip_prefix?: boolean;
@@ -34,6 +35,8 @@ interface DashboardState {
   healthy: boolean;
   loading: boolean;
   error: string | null;
+  /** "community" | "enterprise" — from /health response */
+  edition: string;
 }
 
 interface DashboardCtx extends DashboardState {
@@ -63,6 +66,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     healthy: true,
     loading: true,
     error: null,
+    edition: "community",
   });
 
   const refresh = useCallback(async () => {
@@ -82,6 +86,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         healthy: healthRes?.status === "ok" || !!healthRes,
         loading: false,
         error: null,
+        edition: healthRes?.edition ?? "community",
       });
     } catch (e) {
       setState((prev) => ({

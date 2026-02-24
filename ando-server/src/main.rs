@@ -102,6 +102,7 @@ fn main() -> anyhow::Result<()> {
         plugin_registry: Arc::clone(&shared.plugin_registry),
         config_changed: config_changed.clone(),
         state_file: Some(cli.state_file.clone()),
+        edition: "community",
     });
 
     // ── Start admin API on a dedicated tokio thread ──

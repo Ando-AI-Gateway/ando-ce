@@ -25,6 +25,8 @@ pub struct AdminState {
     /// Path to the JSON file used for persistence (standalone mode).
     /// `None` in unit-test contexts — persistence is skipped.
     pub state_file: Option<PathBuf>,
+    /// "community" or "enterprise" — controls plugin visibility in the dashboard.
+    pub edition: &'static str,
 }
 
 /// Start the admin API server on a dedicated tokio runtime.

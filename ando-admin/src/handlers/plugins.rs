@@ -27,6 +27,7 @@ const EE_PLUGINS: &[(&str, &str, bool)] = &[
 pub async fn list_plugins(State(state): State<Arc<AdminState>>) -> Json<Value> {
     // CE plugins: names from the live registry
     let registered = state.plugin_registry.list();
+    let is_enterprise = state.edition == "enterprise";
 
     let ce: Vec<Value> = CE_PLUGINS
         .iter()
@@ -43,20 +44,30 @@ pub async fn list_plugins(State(state): State<Arc<AdminState>>) -> Json<Value> {
     let ee: Vec<Value> = EE_PLUGINS
         .iter()
         .map(|(name, phase, _)| {
-            json!({
-                "name":      name,
-                "phase":     phase,
-                "available": false,
-                "edition":   "enterprise",
-                "locked":    true,
-                "upgrade_url": "https://andolabs.org/enterprise"
-            })
+            if is_enterprise {
+                json!({
+                    "name":      name,
+                    "phase":     phase,
+                    "available": true,
+                    "edition":   "enterprise",
+                    "locked":    false
+                })
+            } else {
+                json!({
+                    "name":      name,
+                    "phase":     phase,
+                    "available": false,
+                    "edition":   "enterprise",
+                    "locked":    true,
+                    "upgrade_url": "https://andolabs.org/enterprise"
+                })
+            }
         })
         .collect();
 
     Json(json!({
         "plugins": ce,
         "enterprise_plugins": ee,
-        "edition": "community"
+        "edition": state.edition
     }))
 }
