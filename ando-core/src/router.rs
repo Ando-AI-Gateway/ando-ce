@@ -191,6 +191,7 @@ mod tests {
             plugin_config_id: None,
             priority: 0,
             status: 1,
+            strip_prefix: false,
             name: None,
             desc: None,
             labels: Default::default(),

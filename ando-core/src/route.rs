@@ -41,6 +41,16 @@ pub struct Route {
     #[serde(default = "default_status")]
     pub status: u8,
 
+    /// Strip the route URI prefix before forwarding to the upstream.
+    ///
+    /// Example: route `uri = /api/v1/*` with `strip_prefix = true`
+    ///   - incoming `GET /api/v1/users` → upstream receives `GET /users`
+    ///   - incoming `GET /api/v1/`      → upstream receives `GET /`
+    ///
+    /// Defaults to `false` (full path is forwarded unchanged).
+    #[serde(default)]
+    pub strip_prefix: bool,
+
     /// Human-readable name.
     pub name: Option<String>,
 
@@ -83,6 +93,7 @@ mod tests {
             plugin_config_id: None,
             priority: 0,
             status: 1,
+            strip_prefix: false,
             name: None,
             desc: None,
             labels: Default::default(),

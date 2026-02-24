@@ -11,6 +11,7 @@ export interface Route {
   upstream_id?: string;
   plugins?: Record<string, unknown>;
   status?: number;
+  strip_prefix?: boolean;
 }
 
 export interface Upstream {

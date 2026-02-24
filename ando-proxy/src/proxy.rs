@@ -137,7 +137,7 @@ impl ProxyWorker {
         client_ip: &str,
     ) -> RequestResult {
         // ── Route match — extract data immediately, release borrow ──
-        let (route_id, has_plugins, upstream_addr) = {
+        let (route_id, has_plugins, upstream_addr, upstream_path) = {
             let route = match self.router.match_route(method, path, host) {
                 Some(r) => r,
                 None => return RequestResult::Static(RESP_404),
@@ -148,13 +148,14 @@ impl ProxyWorker {
                 || route.plugin_config_id.is_some()
                 || route.service_id.is_some();
             let addr = self.resolve_upstream(route);
-            (id, has_plugins, addr)
+            let up_path = compute_upstream_path(&route.uri, path, route.strip_prefix);
+            (id, has_plugins, addr, up_path)
         };
         // immutable borrow of self.router is now released
 
         // ── FAST PATH: no plugins → proxy directly ──
         if !has_plugins {
-            return RequestResult::Proxy { upstream_addr };
+            return RequestResult::Proxy { upstream_addr, upstream_path };
         }
 
         // ── SLOW PATH: plugin pipeline ──
@@ -210,7 +211,7 @@ impl ProxyWorker {
             }
         }
 
-        RequestResult::Proxy { upstream_addr }
+        RequestResult::Proxy { upstream_addr, upstream_path }
     }
 
     /// Resolve upstream address from local snapshot (never DashMap).
@@ -288,8 +289,8 @@ impl ProxyWorker {
 
 #[derive(Debug)]
 pub enum RequestResult {
-    /// Proxy to upstream at this address.
-    Proxy { upstream_addr: String },
+    /// Proxy to upstream at this address, forwarding the given path.
+    Proxy { upstream_addr: String, upstream_path: String },
     /// Send a pre-built static response (zero alloc).
     Static(&'static [u8]),
     /// Send a plugin-generated response.
@@ -400,6 +401,40 @@ pub fn build_response(buf: &mut Vec<u8>, status: u16, headers: &[(String, String
     }
     buf.extend_from_slice(b"\r\n");
     buf.extend_from_slice(body);
+}
+
+/// Compute the path to send to the upstream.
+///
+/// If `strip_prefix` is false, returns `request_path` unchanged.
+/// If `strip_prefix` is true, strips the route's non-wildcard prefix:
+///
+///   route_uri = "/api/v1/*",  request_path = "/api/v1/users"  → "/users"
+///   route_uri = "/api/v1/*",  request_path = "/api/v1/"       → "/"
+///   route_uri = "/api/*",     request_path = "/api/"           → "/"
+pub fn compute_upstream_path(route_uri: &str, request_path: &str, strip_prefix: bool) -> String {
+    if !strip_prefix {
+        return request_path.to_string();
+    }
+    // Derive the prefix to strip: everything before the trailing "/*" or "*"
+    let prefix = if route_uri.ends_with("/*") {
+        &route_uri[..route_uri.len() - 2]   // "/api/v1/*" → "/api/v1"
+    } else if route_uri.ends_with('*') {
+        &route_uri[..route_uri.len() - 1]   // "/api/v1*"  → "/api/v1"
+    } else {
+        // Exact route: strip the whole path, forward "/"
+        return "/".to_string();
+    };
+
+    if request_path.starts_with(prefix) {
+        let rest = &request_path[prefix.len()..];
+        if rest.is_empty() || rest == "/" {
+            "/".to_string()
+        } else {
+            rest.to_string()
+        }
+    } else {
+        request_path.to_string()
+    }
 }
 
 /// Build upstream HTTP request into a buffer. Zero-copy from &str refs.
@@ -532,6 +567,38 @@ mod tests {
         assert_eq!(status_text(0), "Unknown");
     }
 
+    // ── compute_upstream_path ────────────────────────────────────
+
+    #[test]
+    fn compute_upstream_path_no_strip_returns_original() {
+        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/users", false), "/api/v1/users");
+        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/", false), "/api/v1/");
+    }
+
+    #[test]
+    fn compute_upstream_path_strip_wildcard_prefix() {
+        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/users", true), "/users");
+        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/a/b/c", true), "/a/b/c");
+    }
+
+    #[test]
+    fn compute_upstream_path_strip_trailing_slash() {
+        // /api/v1/ → strip /api/v1 → rest is "/" → "/"
+        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/", true), "/");
+    }
+
+    #[test]
+    fn compute_upstream_path_strip_exact_route_returns_root() {
+        // Exact route with strip_prefix → always forward "/"
+        assert_eq!(compute_upstream_path("/health", "/health", true), "/");
+    }
+
+    #[test]
+    fn compute_upstream_path_prefix_not_matching_returns_original() {
+        // Safety: if prefix doesn't match, pass through unchanged
+        assert_eq!(compute_upstream_path("/api/v1/*", "/other/path", true), "/other/path");
+    }
+
     // ── build_response ───────────────────────────────────────────
 
     #[test]
@@ -630,7 +697,7 @@ mod tests {
         let mut w = make_worker(vec![simple_route("r1", "/api", "127.0.0.1:8080")]);
         let result = w.handle_request("GET", "/api", None, &[], "1.2.3.4");
         match result {
-            RequestResult::Proxy { upstream_addr } => {
+            RequestResult::Proxy { upstream_addr, .. } => {
                 assert_eq!(upstream_addr, "127.0.0.1:8080");
             }
             other => panic!("Expected Proxy, got {:?}", other),
@@ -658,6 +725,43 @@ mod tests {
         let mut w = make_worker(vec![route]);
         let result = w.handle_request("GET", "/api/users/list", None, &[], "1.2.3.4");
         assert!(matches!(result, RequestResult::Proxy { .. }));
+    }
+
+    #[test]
+    fn handle_request_strip_prefix_strips_uri_prefix() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/api/v1/*", "status": 1,
+            "strip_prefix": true,
+            "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+
+        // /api/v1/users → /users
+        match w.handle_request("GET", "/api/v1/users", None, &[], "x") {
+            RequestResult::Proxy { upstream_path, .. } => assert_eq!(upstream_path, "/users"),
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+
+        // /api/v1/ → /
+        match w.handle_request("GET", "/api/v1/", None, &[], "x") {
+            RequestResult::Proxy { upstream_path, .. } => assert_eq!(upstream_path, "/"),
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn handle_request_no_strip_prefix_passes_full_path() {
+        let route: Route = serde_json::from_value(serde_json::json!({
+            "id": "r1", "uri": "/api/v1/*", "status": 1,
+            "strip_prefix": false,
+            "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
+        })).unwrap();
+        let mut w = make_worker(vec![route]);
+
+        match w.handle_request("GET", "/api/v1/users", None, &[], "x") {
+            RequestResult::Proxy { upstream_path, .. } => assert_eq!(upstream_path, "/api/v1/users"),
+            other => panic!("Expected Proxy, got {:?}", other),
+        }
     }
 
     #[test]
@@ -774,7 +878,7 @@ mod tests {
         let mut w = make_worker(vec![route]);
         let result = w.handle_request("GET", "/no-ups", None, &[], "x");
         match result {
-            RequestResult::Proxy { upstream_addr } => {
+            RequestResult::Proxy { upstream_addr, .. } => {
                 assert_eq!(upstream_addr, "127.0.0.1:80",
                     "route with no upstream should fallback to 127.0.0.1:80");
             }
@@ -801,7 +905,7 @@ mod tests {
         let mut w = make_worker_with_registry(vec![route], PluginRegistry::new(), cache);
         let result = w.handle_request("GET", "/ref-ups", None, &[], "x");
         match result {
-            RequestResult::Proxy { upstream_addr } => {
+            RequestResult::Proxy { upstream_addr, .. } => {
                 assert_eq!(upstream_addr, "10.0.0.2:9090");
             }
             other => panic!("Expected Proxy, got {:?}", other),
@@ -833,7 +937,7 @@ mod tests {
         let mut w = make_worker_with_registry(vec![route], PluginRegistry::new(), cache);
         let result = w.handle_request("GET", "/svc", None, &[], "x");
         match result {
-            RequestResult::Proxy { upstream_addr } => {
+            RequestResult::Proxy { upstream_addr, .. } => {
                 assert_eq!(upstream_addr, "10.0.0.3:7070");
             }
             other => panic!("Expected Proxy, got {:?}", other),

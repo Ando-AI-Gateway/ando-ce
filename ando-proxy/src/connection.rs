@@ -131,12 +131,12 @@ pub async fn handle_connection(
                 // Borrow dropped here — safe to do async I/O
 
                 match result {
-                    RequestResult::Proxy { ref upstream_addr } => {
+                    RequestResult::Proxy { ref upstream_addr, ref upstream_path } => {
                         // Build upstream request while header refs are valid
                         let body_data = &read_buf[body_offset..n];
                         build_upstream_request(
                             &mut upstream_req_buf,
-                            method, path, &headers, body_data,
+                            method, upstream_path, &headers, body_data,
                         );
 
                         // Get or open upstream connection

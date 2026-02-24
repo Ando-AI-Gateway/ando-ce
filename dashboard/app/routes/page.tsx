@@ -299,6 +299,7 @@ export default function RoutesPage() {
   const [formUri, setFormUri] = useState("");
   const [formMethods, setFormMethods] = useState("");
   const [formUpstream, setFormUpstream] = useState("");
+  const [formStripPrefix, setFormStripPrefix] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -315,6 +316,7 @@ export default function RoutesPage() {
     setFormUri("");
     setFormMethods("GET");
     setFormUpstream("");
+    setFormStripPrefix(false);
     setFormError("");
     setEditing(null);
     setCreating(true);
@@ -326,6 +328,7 @@ export default function RoutesPage() {
     setFormUri(r.uri);
     setFormMethods((r.methods ?? []).join(", "));
     setFormUpstream(r.upstream_id ?? "");
+    setFormStripPrefix(r.strip_prefix ?? false);
     setFormError("");
     setCreating(false);
     setEditing(r);
@@ -347,7 +350,7 @@ export default function RoutesPage() {
       .split(",")
       .map((m) => m.trim().toUpperCase())
       .filter(Boolean);
-    const body: Record<string, unknown> = { uri: formUri, methods };
+    const body: Record<string, unknown> = { uri: formUri, methods, strip_prefix: formStripPrefix };
     if (formName) body.name = formName;
     if (formUpstream) body.upstream_id = formUpstream;
     const res = await apiPut(`/routes/${formId}`, body);
@@ -416,7 +419,12 @@ export default function RoutesPage() {
                       ))}
                     </div>
                   </td>
-                  <td className="py-2 pr-3 font-mono text-zinc-400">{r.uri}</td>
+                  <td className="py-2 pr-3 font-mono text-zinc-400">
+                    {r.uri}
+                    {r.strip_prefix && (
+                      <span className="ml-1.5 rounded bg-indigo-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-400">strip</span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 font-mono text-zinc-500">{r.upstream_id ?? "inline"}</td>
                   <td className="py-2 pr-3">
                     {r.plugins ? (
@@ -495,6 +503,20 @@ export default function RoutesPage() {
                 </option>
               ))}
             </Select>
+          </FormField>
+          <FormField
+            label="Strip URI prefix"
+            hint="When enabled, the route's URI prefix is stripped before forwarding. E.g. route /api/v1/* with strip prefix → upstream receives /users instead of /api/v1/users."
+          >
+            <label className="flex cursor-pointer items-center gap-2 py-1">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-indigo-500"
+                checked={formStripPrefix}
+                onChange={(e) => setFormStripPrefix(e.target.checked)}
+              />
+              <span className="text-xs text-zinc-400">Strip prefix before forwarding to upstream</span>
+            </label>
           </FormField>
           {formError && (
             <div className="rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400">
