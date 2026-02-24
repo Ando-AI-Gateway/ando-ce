@@ -338,11 +338,16 @@ impl ConnPool {
     /// Called once at worker startup, before accepting any traffic.
     pub async fn warm(&mut self, addrs: &[String], count: usize) {
         for addr in addrs {
-            // Resolve hostname → IP once per upstream (std blocking DNS — cold path)
+            // Resolve hostname → IPs once per upstream (std blocking DNS — cold path).
+            // Sort IPv4-first: on macOS `localhost` resolves to `::1` AND `127.0.0.1`,
+            // and most upstream servers are IPv4-only.
             let socket_addr: std::net::SocketAddr = {
                 let parsed = addr.parse::<std::net::SocketAddr>().ok().or_else(|| {
                     use std::net::ToSocketAddrs;
-                    addr.as_str().to_socket_addrs().ok()?.next()
+                    let all: Vec<_> = addr.as_str().to_socket_addrs().ok()?.collect();
+                    // prefer IPv4
+                    all.iter().copied().find(|a| a.is_ipv4())
+                        .or_else(|| all.into_iter().next())
                 });
                 match parsed {
                     Some(sa) => sa,

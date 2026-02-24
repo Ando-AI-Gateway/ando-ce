@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 
-/// Resolve an `addr` string (e.g. `"localhost:3001"`) to a `SocketAddr`.
+/// Resolve an `addr` string (e.g. `"localhost:3001"`) to a list of `SocketAddr`s.
 ///
 /// We resolve explicitly via std's blocking `ToSocketAddrs` before passing
 /// to monoio's `TcpStream::connect`.  Monoio's internal hostname-resolution
@@ -16,35 +16,51 @@ use std::rc::Rc;
 /// acceptable here because it only runs when the connection pool is empty
 /// (startup, first request, or after upstream failure) — it is NOT on the
 /// steady-state hot path.
-fn resolve_addr(addr: &str) -> Option<SocketAddr> {
+///
+/// Returns candidates sorted IPv4-first, because on macOS `localhost` resolves
+/// to both `::1` (IPv6) and `127.0.0.1` (IPv4), and `.next()` often returns
+/// `::1` first.  Most upstream servers listen on IPv4-only, so we try IPv4
+/// first to avoid spurious "Connection refused" on the IPv6 address.
+fn resolve_addrs(addr: &str) -> Vec<SocketAddr> {
     // Fast path: already an IP:port literal
     if let Ok(sa) = addr.parse::<SocketAddr>() {
-        return Some(sa);
+        return vec![sa];
     }
     // Slow path: DNS/hosts lookup (blocking — intentional, see above)
     use std::net::ToSocketAddrs;
-    addr.to_socket_addrs().ok()?.next()
+    let all: Vec<SocketAddr> = match addr.to_socket_addrs() {
+        Ok(iter) => iter.collect(),
+        Err(_) => return vec![],
+    };
+    // Sort: IPv4 addresses before IPv6
+    let mut v4: Vec<SocketAddr> = all.iter().copied().filter(|a| a.is_ipv4()).collect();
+    let v6: Vec<SocketAddr> = all.iter().copied().filter(|a| a.is_ipv6()).collect();
+    v4.extend(v6);
+    v4
 }
 
-/// Open a new TCP connection to `addr`, logging any error.
+/// Open a new TCP connection to `addr`, trying all resolved addresses
+/// (IPv4-first) and returning the first that succeeds.
 async fn new_upstream_conn(addr: &str) -> Option<TcpStream> {
-    let sa = match resolve_addr(addr) {
-        Some(a) => a,
-        None => {
-            tracing::warn!(addr = %addr, "Upstream address resolve failed");
-            return None;
-        }
-    };
-    match TcpStream::connect(sa).await {
-        Ok(s) => {
-            let _ = s.set_nodelay(true);
-            Some(s)
-        }
-        Err(e) => {
-            tracing::warn!(addr = %addr, error = %e, "Upstream connect failed");
-            None
+    let candidates = resolve_addrs(addr);
+    if candidates.is_empty() {
+        tracing::warn!(addr = %addr, "Upstream address resolve failed");
+        return None;
+    }
+    for sa in &candidates {
+        match TcpStream::connect(*sa).await {
+            Ok(s) => {
+                let _ = s.set_nodelay(true);
+                tracing::debug!(addr = %addr, resolved = %sa, "Upstream connected");
+                return Some(s);
+            }
+            Err(e) => {
+                tracing::debug!(addr = %addr, resolved = %sa, error = %e, "Upstream candidate failed, trying next");
+            }
         }
     }
+    tracing::warn!(addr = %addr, tried = candidates.len(), "Upstream connect failed on all candidates");
+    None
 }
 
 /// Handle a single client connection (HTTP/1.1 with keepalive).
