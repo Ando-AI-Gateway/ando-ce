@@ -233,7 +233,7 @@ fn default_admin_addr() -> String { "0.0.0.0:9180".into() }
 fn default_connect_timeout() -> u64 { 2000 }
 fn default_read_timeout() -> u64 { 5000 }
 fn default_write_timeout() -> u64 { 5000 }
-fn default_keepalive_pool() -> usize { 256 }
+fn default_keepalive_pool() -> usize { 16 }
 fn default_true() -> bool { true }
 fn default_mode() -> DeploymentMode { DeploymentMode::Standalone }
 fn default_etcd_prefix() -> String { "/ando".into() }
@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(cfg.connect_timeout_ms, 2000);
         assert_eq!(cfg.read_timeout_ms, 5000);
         assert_eq!(cfg.write_timeout_ms, 5000);
-        assert_eq!(cfg.keepalive_pool_size, 256);
+        assert_eq!(cfg.keepalive_pool_size, 16);
     }
 
     #[test]

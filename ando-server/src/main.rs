@@ -58,6 +58,12 @@ fn main() -> anyhow::Result<()> {
         "Ando CE starting — monoio thread-per-core engine"
     );
 
+    // ── Raise file-descriptor limit (EMFILE guard) ──
+    // macOS default soft limit is 256; we need workers × pool_size fds.
+    // Raise to min(hard limit, 65536) before spawning workers or the pool.
+    #[cfg(unix)]
+    raise_fd_limit();
+
     // ── Config ──
     let config = if cli.config.exists() {
         info!(path = %cli.config.display(), "Loading config file");
@@ -149,6 +155,42 @@ fn main() -> anyhow::Result<()> {
 
     info!("Ando CE stopped");
     Ok(())
+}
+
+/// Raise RLIMIT_NOFILE to min(hard_limit, 65536) so workers can open enough
+/// upstream connections without hitting EMFILE (os error 24).
+/// macOS ships with a default soft limit of 256 which is far too low for
+/// a proxy with multiple workers and a keepalive connection pool.
+#[cfg(unix)]
+fn raise_fd_limit() {
+    unsafe {
+        let mut rl = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rl) != 0 {
+            tracing::warn!("getrlimit(RLIMIT_NOFILE) failed — fd limit unchanged");
+            return;
+        }
+        // RLIM_INFINITY is u64::MAX on some platforms; cap at 65536.
+        let hard = rl.rlim_max;
+        let target: libc::rlim_t = if hard == libc::RLIM_INFINITY || hard > 65536 {
+            65536
+        } else {
+            hard
+        };
+        if rl.rlim_cur >= target {
+            tracing::debug!(limit = rl.rlim_cur, "fd limit already sufficient");
+            return;
+        }
+        rl.rlim_cur = target;
+        if libc::setrlimit(libc::RLIMIT_NOFILE, &rl) != 0 {
+            tracing::warn!(
+                tried = target,
+                "setrlimit(RLIMIT_NOFILE) failed — run 'ulimit -n 65536' \
+                 or lower keepalive_pool_size in config"
+            );
+        } else {
+            tracing::info!(limit = target, "File descriptor limit raised");
+        }
+    }
 }
 
 fn setup_signal_handler() {
