@@ -62,37 +62,85 @@ ando-ce/
 
 ## Quick Start
 
+### Build & Run
+
 ```bash
+# Build from source
 cargo build --release
 ./target/release/ando-server -c config/ando.yaml
+
+# Server listens on:
+# - Proxy: http://localhost:9080
+# - Admin API: http://localhost:8001
+# - Dashboard: http://localhost:8001/admin/dashboard
 ```
 
 ### Docker
 
 ```bash
 docker build -t ando-ce:latest .
-docker run -p 8000:8000 -p 9180:9180 ando-ce:latest
+docker run -p 9080:9080 -p 8001:8001 ando-ce:latest
+
+# Or with docker-compose
+docker-compose up -d
 ```
 
-## Admin API
+### First Route
+
+Access the **Admin Dashboard** at `http://localhost:8001/admin/dashboard` and:
+
+1. Click **+ Create Route**
+2. Enter:
+   - **Route ID**: `demo-route`
+   - **URI**: `/demo/*`
+   - **Upstream**: `http://httpbin.org` (or your backend)
+3. Click **Save**
+
+Test it:
+```bash
+curl http://localhost:9080/demo/get
+```
+
+## Admin API & Dashboard
+
+### Web Dashboard
+
+Modern admin UI at `http://localhost:8001/admin/dashboard`:
+
+- **Routes** — Create, read, update, delete routes with live editor
+- **Upstreams** — Manage backends (load balancing: round robin, chash, ewma)
+- **Consumers** — Add API consumers with key-based authentication
+- **Plugins** — View enabled plugins and their configuration
+- **Settings** — Gateway info, connection details, edition
+- **Test Request** — Send live requests through the proxy and inspect responses
+
+![Dashboard features: CRUD routes/upstreams/consumers, live plugin visibility, test request panel]
+
+### REST API
 
 APISIX-compatible admin API at `/apisix/admin/*`:
 
 ```bash
 # Create a route
-curl -X PUT http://localhost:9180/apisix/admin/routes/1 \
+curl -X PUT http://localhost:8001/apisix/admin/routes/demo \
   -H "Content-Type: application/json" \
   -d '{
     "uri": "/api/*",
     "methods": ["GET", "POST"],
     "upstream": {
       "type": "roundrobin",
-      "nodes": {"backend:8080": 1}
+      "nodes": {"backend.example.com:8080": 1}
     },
     "plugins": {
       "key-auth": {}
     }
   }'
+
+# Get all routes
+curl http://localhost:8001/apisix/admin/routes
+
+# Delete a route
+curl -X DELETE http://localhost:8001/apisix/admin/routes/demo
 ```
 
 ## Benchmark
