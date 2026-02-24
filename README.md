@@ -71,8 +71,8 @@ cargo build --release
 
 # Server listens on:
 # - Proxy: http://localhost:9080
-# - Admin API: http://localhost:8001
-# - Dashboard: http://localhost:8001/admin/dashboard
+# - Admin API: http://localhost:9180
+# - Dashboard: http://localhost:9180/dashboard
 ```
 
 ### Docker
@@ -87,7 +87,7 @@ docker-compose up -d
 
 ### First Route
 
-Access the **Admin Dashboard** at `http://localhost:8001/admin/dashboard` and:
+Access the **Admin Dashboard** at `http://localhost:9180/dashboard` and:
 
 1. Click **+ Create Route**
 2. Enter:

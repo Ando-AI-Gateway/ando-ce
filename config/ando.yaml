@@ -12,7 +12,7 @@ proxy:
   keepalive_pool_size: 256
 
 admin:
-  addr: "0.0.0.0:8001"
+  addr: "0.0.0.0:9180"
   enabled: true
   # api_key: "your-secret-admin-key"
 
