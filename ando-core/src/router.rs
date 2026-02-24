@@ -33,10 +33,29 @@ impl Router {
 
             let path = normalize_path(&route.uri);
 
+            // For wildcard routes (e.g. /api/v1/*) matchit's {*rest} catch-all
+            // does NOT match an empty capture, so /api/v1/ would 404. We also
+            // register the trailing-slash base path as an exact entry so that
+            // both /api/v1/ and /api/v1/anything are handled by the same route.
+            let base_slash = if route.uri.ends_with("/*") && route.uri.len() > 2 {
+                // "/api/v1/*"  →  "/api/v1/"
+                Some(route.uri[..route.uri.len() - 1].to_string())
+            } else if route.uri == "/*" {
+                // "/*" → "/"  (already covered by a plain "/" exact match would
+                // conflict, so skip — "/" is handled by the catch-all directly)
+                None
+            } else {
+                None
+            };
+
             if route.methods.is_empty() {
                 // Match any method
                 if let Err(e) = any_tree.insert(&path, route.id.clone()) {
                     tracing::warn!(route_id = %route.id, path = %path, "Failed to insert catch-all route: {e}");
+                }
+                if let Some(ref bp) = base_slash {
+                    // Ignore conflict errors — a more-specific exact route may already own this path
+                    let _ = any_tree.insert(bp, route.id.clone());
                 }
             } else {
                 for method in &route.methods {
@@ -46,6 +65,9 @@ impl Router {
                         .or_default();
                     if let Err(e) = tree.insert(&path, route.id.clone()) {
                         tracing::warn!(route_id = %route.id, method = %method, path = %path, "Failed to insert route: {e}");
+                    }
+                    if let Some(ref bp) = base_slash {
+                        let _ = tree.insert(bp, route.id.clone());
                     }
                 }
             }
@@ -205,6 +227,21 @@ mod tests {
 
         let route = router.match_route("GET", "/api/v1/anything", None).unwrap();
         assert_eq!(route.id, "r1");
+    }
+
+    #[test]
+    fn test_wildcard_trailing_slash() {
+        // /api/v1/* should match /api/v1/ (trailing slash, empty rest)
+        let routes = vec![make_route("r1", "/api/v1/*", vec!["GET"])];
+        let router = Router::build(routes, 1).unwrap();
+        // exact base with trailing slash
+        eprintln!("matching /api/v1/");
+        let r = router.match_route("GET", "/api/v1/", None);
+        eprintln!("result: {:?}", r.map(|x| &x.id));
+        assert!(r.is_some(), "/api/v1/ should match /api/v1/*");
+        // path with content
+        assert!(router.match_route("GET", "/api/v1/users", None).is_some());
+        assert!(router.match_route("GET", "/api/v1/users/123", None).is_some());
     }
 
     #[test]
