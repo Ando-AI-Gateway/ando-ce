@@ -119,6 +119,7 @@ function TestRequestModal({
       open={open}
       onClose={() => { reset(route); onClose(); }}
       title={`Test Route: ${route?.id ?? ""}`}
+      description="Send a live request through the proxy to verify your route works. The request goes directly from your browser to the proxy port."
     >
       <div className="space-y-3">
         {/* Method + path row */}
@@ -388,7 +389,7 @@ export default function RoutesPage() {
 
       <Card>
         {filtered.length === 0 ? (
-          <EmptyState message={search ? "No matching routes" : "No routes configured"} />
+          <EmptyState message={search ? "No matching routes" : "No routes yet — click \"+ Create Route\" to add your first one."} />
         ) : (
           <table className="w-full text-xs">
             <thead>
@@ -458,30 +459,34 @@ export default function RoutesPage() {
         open={modalOpen}
         onClose={closeModal}
         title={creating ? "Create Route" : `Edit Route: ${editing?.id}`}
+        description={creating
+          ? "A route matches incoming requests by URI and method, then forwards them to an upstream. Example: route all GET /api/users/* to your users service."
+          : "Update the route configuration. Changes take effect immediately."
+        }
       >
         <div className="space-y-3">
-          <FormField label="Route ID">
+          <FormField label="Route ID" hint="A unique identifier. Use lowercase with hyphens — e.g. users-api, payment-service.">
             <Input
               value={formId}
               onChange={(e) => setFormId(e.target.value)}
-              placeholder="my-route"
+              placeholder="e.g. users-api"
               disabled={!!editing}
             />
           </FormField>
-          <FormField label="Name (optional)">
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="My Route" />
+          <FormField label="Name (optional)" hint="A human-friendly label shown in the dashboard.">
+            <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Users Service" />
           </FormField>
-          <FormField label="URI">
-            <Input value={formUri} onChange={(e) => setFormUri(e.target.value)} placeholder="/api/*" />
+          <FormField label="URI" hint="The path pattern to match. Use /* for prefix matching — e.g. /api/users/* matches /api/users/123.">
+            <Input value={formUri} onChange={(e) => setFormUri(e.target.value)} placeholder="e.g. /api/users/*" />
           </FormField>
-          <FormField label="Methods (comma-separated)">
+          <FormField label="Methods" hint="Comma-separated HTTP methods this route accepts. Leave as GET for read-only, or add POST, PUT, DELETE.">
             <Input
               value={formMethods}
               onChange={(e) => setFormMethods(e.target.value)}
-              placeholder="GET, POST"
+              placeholder="e.g. GET, POST, PUT, DELETE"
             />
           </FormField>
-          <FormField label="Upstream">
+          <FormField label="Upstream" hint="The backend service to forward matched requests to. Select 'None' to define nodes inline.">
             <Select value={formUpstream} onChange={(e) => setFormUpstream(e.target.value)}>
               <option value="">None (inline)</option>
               {upstreams.map((u) => (

@@ -112,7 +112,7 @@ export default function UpstreamsPage() {
 
       <Card>
         {filtered.length === 0 ? (
-          <EmptyState message={search ? "No matching upstreams" : "No upstreams configured"} />
+          <EmptyState message={search ? "No matching upstreams" : "No upstreams yet — click \"+ Create Upstream\" to define your first backend."} />
         ) : (
           <table className="w-full text-xs">
             <thead>
@@ -158,18 +158,22 @@ export default function UpstreamsPage() {
         open={modalOpen}
         onClose={closeModal}
         title={creating ? "Create Upstream" : `Edit Upstream: ${editing?.id}`}
+        description={creating
+          ? "An upstream is a group of backend servers that routes forward traffic to. Define one or more nodes with weights for load balancing."
+          : "Update the upstream nodes or load-balancing strategy. Changes take effect immediately."
+        }
       >
         <div className="space-y-3">
-          <FormField label="Upstream ID">
-            <Input value={formId} onChange={(e) => setFormId(e.target.value)} placeholder="my-upstream" disabled={!!editing} />
+          <FormField label="Upstream ID" hint="A unique identifier. Use lowercase with hyphens — e.g. users-backend, payment-cluster.">
+            <Input value={formId} onChange={(e) => setFormId(e.target.value)} placeholder="e.g. users-backend" disabled={!!editing} />
           </FormField>
-          <FormField label="Name (optional)">
-            <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="My Backend" />
+          <FormField label="Name (optional)" hint="A human-friendly label shown in the dashboard.">
+            <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Users Backend" />
           </FormField>
-          <FormField label="Nodes (host:port:weight, comma-separated)">
-            <Input value={formHost} onChange={(e) => setFormHost(e.target.value)} placeholder="127.0.0.1:8080:1, 127.0.0.1:8081:1" />
+          <FormField label="Nodes" hint="Comma-separated list of host:port:weight. Weight defaults to 1 if omitted. Example: 10.0.1.5:8080:3, 10.0.1.6:8080:1">
+            <Input value={formHost} onChange={(e) => setFormHost(e.target.value)} placeholder="e.g. 127.0.0.1:8080:1, 127.0.0.1:8081:2" />
           </FormField>
-          <FormField label="Load Balance">
+          <FormField label="Load Balance" hint="Round Robin distributes evenly. Consistent Hash pins clients to the same node. EWMA routes to the fastest node.">
             <Select value={formType} onChange={(e) => setFormType(e.target.value)}>
               <option value="roundrobin">Round Robin</option>
               <option value="chash">Consistent Hash</option>

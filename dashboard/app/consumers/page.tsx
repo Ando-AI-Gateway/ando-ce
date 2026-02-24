@@ -91,7 +91,7 @@ export default function ConsumersPage() {
 
       <Card>
         {filtered.length === 0 ? (
-          <EmptyState message={search ? "No matching consumers" : "No consumers configured"} />
+          <EmptyState message={search ? "No matching consumers" : "No consumers yet — click \"+ Create Consumer\" to register your first API client."} />
         ) : (
           <table className="w-full text-xs">
             <thead>
@@ -139,21 +139,25 @@ export default function ConsumersPage() {
         open={modalOpen}
         onClose={closeModal}
         title={creating ? "Create Consumer" : `Edit Consumer: ${editing?.username}`}
+        description={creating
+          ? "A consumer represents an API client or application. Assign an API key so routes with key-auth can identify and authorize requests."
+          : "Update the consumer’s credentials. Changes take effect immediately."
+        }
       >
         <div className="space-y-3">
-          <FormField label="Username">
+          <FormField label="Username" hint="A unique identifier for this consumer. Use the app or team name — e.g. mobile-app, billing-service.">
             <Input
               value={formUsername}
               onChange={(e) => setFormUsername(e.target.value)}
-              placeholder="my-consumer"
+              placeholder="e.g. mobile-app"
               disabled={!!editing}
             />
           </FormField>
-          <FormField label="API Key (key-auth)">
+          <FormField label="API Key (key-auth)" hint="The secret key this consumer sends via the apikey header or query param. Leave empty for no key-auth.">
             <Input
               value={formApiKey}
               onChange={(e) => setFormApiKey(e.target.value)}
-              placeholder="secret-api-key"
+              placeholder="e.g. sk-a1b2c3d4e5f6"
             />
           </FormField>
           {formError && (

@@ -132,11 +132,13 @@ export function Modal({
   open,
   onClose,
   title,
+  description,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  description?: string;
   children: ReactNode;
 }) {
   if (!open) return null;
@@ -147,11 +149,16 @@ export function Modal({
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
       <div className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-200">{title}</h3>
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-200">{title}</h3>
+            {description && (
+              <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{description}</p>
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            className="rounded-md p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 shrink-0 ml-4"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
@@ -167,9 +174,11 @@ export function Modal({
 // ── Form helpers ─────────────────────────────────────────────────
 export function FormField({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: ReactNode;
 }) {
   return (
@@ -178,6 +187,9 @@ export function FormField({
         {label}
       </label>
       {children}
+      {hint && (
+        <p className="mt-1 text-[10px] text-zinc-600 leading-relaxed">{hint}</p>
+      )}
     </div>
   );
 }
