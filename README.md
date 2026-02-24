@@ -79,7 +79,7 @@ cargo build --release
 
 ```bash
 docker build -t ando-ce:latest .
-docker run -p 9080:9080 -p 8001:8001 ando-ce:latest
+docker run -p 9080:9080 -p 9180:9180 ando-ce:latest
 
 # Or with docker-compose
 docker-compose up -d
@@ -105,7 +105,7 @@ curl http://localhost:9080/demo/get
 
 ### Web Dashboard
 
-Modern admin UI at `http://localhost:8001/admin/dashboard`:
+Modern admin UI at `http://localhost:9180/dashboard`:
 
 - **Routes** — Create, read, update, delete routes with live editor
 - **Upstreams** — Manage backends (load balancing: round robin, chash, ewma)
@@ -122,7 +122,7 @@ APISIX-compatible admin API at `/apisix/admin/*`:
 
 ```bash
 # Create a route
-curl -X PUT http://localhost:8001/apisix/admin/routes/demo \
+curl -X PUT http://localhost:9180/apisix/admin/routes/demo \
   -H "Content-Type: application/json" \
   -d '{
     "uri": "/api/*",
@@ -137,7 +137,7 @@ curl -X PUT http://localhost:8001/apisix/admin/routes/demo \
   }'
 
 # Get all routes
-curl http://localhost:8001/apisix/admin/routes
+curl http://localhost:9180/apisix/admin/routes
 
 # Delete a route
 curl -X DELETE http://localhost:8001/apisix/admin/routes/demo
