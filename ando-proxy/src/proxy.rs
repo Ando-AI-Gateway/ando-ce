@@ -338,10 +338,24 @@ impl ConnPool {
     /// Called once at worker startup, before accepting any traffic.
     pub async fn warm(&mut self, addrs: &[String], count: usize) {
         for addr in addrs {
+            // Resolve hostname → IP once per upstream (std blocking DNS — cold path)
+            let socket_addr: std::net::SocketAddr = {
+                let parsed = addr.parse::<std::net::SocketAddr>().ok().or_else(|| {
+                    use std::net::ToSocketAddrs;
+                    addr.as_str().to_socket_addrs().ok()?.next()
+                });
+                match parsed {
+                    Some(sa) => sa,
+                    None => {
+                        tracing::warn!(addr = %addr, "Pool pre-warm: address resolve failed");
+                        continue;
+                    }
+                }
+            };
             let target = count.min(self.max_idle);
             let queue = self.pools.entry(addr.clone()).or_insert_with(|| VecDeque::with_capacity(target));
             for _ in 0..target {
-                match TcpStream::connect(addr.as_str()).await {
+                match TcpStream::connect(socket_addr).await {
                     Ok(stream) => {
                         // Set TCP_NODELAY on pooled connections
                         let _ = stream.set_nodelay(true);

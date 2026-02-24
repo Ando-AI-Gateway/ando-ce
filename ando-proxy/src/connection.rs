@@ -7,6 +7,46 @@ use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 
+/// Resolve an `addr` string (e.g. `"localhost:3001"`) to a `SocketAddr`.
+///
+/// We resolve explicitly via std's blocking `ToSocketAddrs` before passing
+/// to monoio's `TcpStream::connect`.  Monoio's internal hostname-resolution
+/// path can behave differently on macOS (e.g. under FusionDriver) when the
+/// kernel AIO interface does not support `getaddrinfo`.  The blocking call is
+/// acceptable here because it only runs when the connection pool is empty
+/// (startup, first request, or after upstream failure) — it is NOT on the
+/// steady-state hot path.
+fn resolve_addr(addr: &str) -> Option<SocketAddr> {
+    // Fast path: already an IP:port literal
+    if let Ok(sa) = addr.parse::<SocketAddr>() {
+        return Some(sa);
+    }
+    // Slow path: DNS/hosts lookup (blocking — intentional, see above)
+    use std::net::ToSocketAddrs;
+    addr.to_socket_addrs().ok()?.next()
+}
+
+/// Open a new TCP connection to `addr`, logging any error.
+async fn new_upstream_conn(addr: &str) -> Option<TcpStream> {
+    let sa = match resolve_addr(addr) {
+        Some(a) => a,
+        None => {
+            tracing::warn!(addr = %addr, "Upstream address resolve failed");
+            return None;
+        }
+    };
+    match TcpStream::connect(sa).await {
+        Ok(s) => {
+            let _ = s.set_nodelay(true);
+            Some(s)
+        }
+        Err(e) => {
+            tracing::warn!(addr = %addr, error = %e, "Upstream connect failed");
+            None
+        }
+    }
+}
+
 /// Handle a single client connection (HTTP/1.1 with keepalive).
 ///
 /// Shares ProxyWorker and ConnPool with all other connections
@@ -87,12 +127,9 @@ pub async fn handle_connection(
                         let maybe_conn = conn_pool.borrow_mut().take(upstream_addr);
                         let mut upstream = match maybe_conn {
                             Some(s) => s,
-                            None => match TcpStream::connect(upstream_addr.as_str()).await {
-                                Ok(s) => {
-                                    let _ = s.set_nodelay(true);
-                                    s
-                                }
-                                Err(_) => {
+                            None => match new_upstream_conn(upstream_addr).await {
+                                Some(s) => s,
+                                None => {
                                     let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                     res?;
                                     if !keep_alive { return Ok(()); }
@@ -105,13 +142,13 @@ pub async fn handle_connection(
                         let req_data = upstream_req_buf.clone();
                         let (res, _) = upstream.write_all(req_data).await;
                         if res.is_err() {
-                            // Pooled conn was stale, retry with new connection
-                            match TcpStream::connect(upstream_addr.as_str()).await {
-                                Ok(mut new_upstream) => {
-                                    let _ = new_upstream.set_nodelay(true);
+                            // Pooled conn was stale — retry with a fresh connection
+                            match new_upstream_conn(upstream_addr).await {
+                                Some(mut new_upstream) => {
                                     let req_data = upstream_req_buf.clone();
                                     let (res, _) = new_upstream.write_all(req_data).await;
                                     if res.is_err() {
+                                        tracing::warn!(addr = %upstream_addr, "Upstream write failed after reconnect");
                                         let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                         res?;
                                         if !keep_alive { return Ok(()); }
@@ -119,7 +156,7 @@ pub async fn handle_connection(
                                     }
                                     upstream = new_upstream;
                                 }
-                                Err(_) => {
+                                None => {
                                     let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                     res?;
                                     if !keep_alive { return Ok(()); }
@@ -133,13 +170,15 @@ pub async fn handle_connection(
                         upstream_buf = returned_ubuf;
                         let resp_n = match res {
                             Ok(0) => {
+                                tracing::warn!(addr = %upstream_addr, "Upstream closed connection without response");
                                 let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                 res?;
                                 if !keep_alive { return Ok(()); }
                                 continue;
                             }
                             Ok(n) => n,
-                            Err(_) => {
+                            Err(e) => {
+                                tracing::warn!(addr = %upstream_addr, error = %e, "Upstream read error");
                                 let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                 res?;
                                 if !keep_alive { return Ok(()); }
