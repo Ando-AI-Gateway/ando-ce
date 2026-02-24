@@ -40,11 +40,10 @@ impl Plugin for KeyAuthPlugin {
     }
 
     fn configure(&self, config: &serde_json::Value) -> anyhow::Result<Box<dyn PluginInstance>> {
-        let cfg: KeyAuthConfig = serde_json::from_value(config.clone())
-            .unwrap_or(KeyAuthConfig {
-                header: default_header(),
-                hide_credentials: false,
-            });
+        let cfg: KeyAuthConfig = serde_json::from_value(config.clone()).unwrap_or(KeyAuthConfig {
+            header: default_header(),
+            hide_credentials: false,
+        });
 
         Ok(Box::new(KeyAuthInstance {
             header: cfg.header.to_lowercase(),
@@ -78,7 +77,10 @@ impl PluginInstance for KeyAuthInstance {
                     status: 401,
                     headers: vec![
                         ("content-type".to_string(), "application/json".to_string()),
-                        ("www-authenticate".to_string(), "Key realm=\"Ando\"".to_string()),
+                        (
+                            "www-authenticate".to_string(),
+                            "Key realm=\"Ando\"".to_string(),
+                        ),
                     ],
                     body: Some(br#"{"error":"Missing API key","status":401}"#.to_vec()),
                 };
@@ -88,10 +90,8 @@ impl PluginInstance for KeyAuthInstance {
         // Store the key in vars for the proxy to validate against consumers.
         // The proxy layer handles the actual consumer lookup since it has
         // access to the consumer store.
-        ctx.vars.insert(
-            "_key_auth_key".to_string(),
-            serde_json::Value::String(key),
-        );
+        ctx.vars
+            .insert("_key_auth_key".to_string(), serde_json::Value::String(key));
 
         if self.hide_credentials {
             ctx.request_headers.remove(&self.header);
@@ -115,7 +115,10 @@ mod tests {
     }
 
     fn inst(header: &str, hide: bool) -> KeyAuthInstance {
-        KeyAuthInstance { header: header.to_lowercase(), hide_credentials: hide }
+        KeyAuthInstance {
+            header: header.to_lowercase(),
+            hide_credentials: hide,
+        }
     }
 
     // ── Missing / empty key ──────────────────────────────────────────────────
@@ -124,7 +127,12 @@ mod tests {
     fn test_missing_key_returns_401() {
         let mut ctx = make_ctx(vec![]);
         let result = inst("apikey", false).access(&mut ctx);
-        if let PluginResult::Response { status, body, headers } = result {
+        if let PluginResult::Response {
+            status,
+            body,
+            headers,
+        } = result
+        {
             assert_eq!(status, 401);
             let body_text = String::from_utf8(body.unwrap()).unwrap();
             assert!(body_text.contains("Missing API key"));
@@ -148,7 +156,10 @@ mod tests {
         let mut ctx = make_ctx(vec![("apikey", "my-secret-key")]);
         let result = inst("apikey", false).access(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));
-        assert_eq!(ctx.vars["_key_auth_key"], serde_json::json!("my-secret-key"));
+        assert_eq!(
+            ctx.vars["_key_auth_key"],
+            serde_json::json!("my-secret-key")
+        );
     }
 
     #[test]
@@ -164,14 +175,20 @@ mod tests {
     fn test_hide_credentials_removes_header() {
         let mut ctx = make_ctx(vec![("apikey", "my-key")]);
         inst("apikey", true).access(&mut ctx);
-        assert!(!ctx.request_headers.contains_key("apikey"), "header must be removed");
+        assert!(
+            !ctx.request_headers.contains_key("apikey"),
+            "header must be removed"
+        );
     }
 
     #[test]
     fn test_no_hide_keeps_header() {
         let mut ctx = make_ctx(vec![("apikey", "my-key")]);
         inst("apikey", false).access(&mut ctx);
-        assert_eq!(ctx.request_headers.get("apikey").map(|s| s.as_str()), Some("my-key"));
+        assert_eq!(
+            ctx.request_headers.get("apikey").map(|s| s.as_str()),
+            Some("my-key")
+        );
     }
 
     // ── Custom header name ───────────────────────────────────────────────────
@@ -233,10 +250,12 @@ mod tests {
     #[test]
     fn test_configure_custom_header_and_hide() {
         use ando_plugin::plugin::Plugin;
-        let i = KeyAuthPlugin.configure(&serde_json::json!({
-            "header": "authorization",
-            "hide_credentials": true
-        })).unwrap();
+        let i = KeyAuthPlugin
+            .configure(&serde_json::json!({
+                "header": "authorization",
+                "hide_credentials": true
+            }))
+            .unwrap();
         let mut ctx = make_ctx(vec![("authorization", "token-abc")]);
         let result = i.access(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));

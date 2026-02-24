@@ -60,9 +60,7 @@ impl Router {
             } else {
                 for method in &route.methods {
                     let method_upper = method.to_uppercase();
-                    let tree = method_trees
-                        .entry(method_upper)
-                        .or_default();
+                    let tree = method_trees.entry(method_upper).or_default();
                     if let Err(e) = tree.insert(&path, route.id.clone()) {
                         tracing::warn!(route_id = %route.id, method = %method, path = %path, "Failed to insert route: {e}");
                     }
@@ -221,9 +219,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_routing() {
-        let routes = vec![
-            make_route("r1", "/api/*", vec!["GET"]),
-        ];
+        let routes = vec![make_route("r1", "/api/*", vec!["GET"])];
         let router = Router::build(routes, 1).unwrap();
 
         let route = router.match_route("GET", "/api/v1/anything", None).unwrap();
@@ -242,7 +238,11 @@ mod tests {
         assert!(r.is_some(), "/api/v1/ should match /api/v1/*");
         // path with content
         assert!(router.match_route("GET", "/api/v1/users", None).is_some());
-        assert!(router.match_route("GET", "/api/v1/users/123", None).is_some());
+        assert!(
+            router
+                .match_route("GET", "/api/v1/users/123", None)
+                .is_some()
+        );
     }
 
     #[test]
@@ -287,7 +287,11 @@ mod tests {
         let mut route = make_route("r1", "/api", vec!["GET"]);
         route.hosts = vec!["api.example.com".to_string()];
         let router = Router::build(vec![route], 1).unwrap();
-        assert!(router.match_route("GET", "/api", Some("api.example.com")).is_some());
+        assert!(
+            router
+                .match_route("GET", "/api", Some("api.example.com"))
+                .is_some()
+        );
     }
 
     #[test]
@@ -295,7 +299,11 @@ mod tests {
         let mut route = make_route("r1", "/api", vec!["GET"]);
         route.hosts = vec!["api.example.com".to_string()];
         let router = Router::build(vec![route], 1).unwrap();
-        assert!(router.match_route("GET", "/api", Some("other.example.com")).is_none());
+        assert!(
+            router
+                .match_route("GET", "/api", Some("other.example.com"))
+                .is_none()
+        );
         assert!(router.match_route("GET", "/api", None).is_none());
     }
 
@@ -303,7 +311,11 @@ mod tests {
     fn test_no_host_restriction_matches_any_host() {
         let route = make_route("r1", "/api", vec!["GET"]);
         let router = Router::build(vec![route], 1).unwrap();
-        assert!(router.match_route("GET", "/api", Some("any.host.com")).is_some());
+        assert!(
+            router
+                .match_route("GET", "/api", Some("any.host.com"))
+                .is_some()
+        );
         assert!(router.match_route("GET", "/api", None).is_some());
     }
 
@@ -336,8 +348,17 @@ mod tests {
             make_route("r2", "/api/v1/tokens", vec!["POST"]),
         ];
         let router = Router::build(routes, 1).unwrap();
-        assert_eq!(router.match_route("GET", "/api/v1/users", None).unwrap().id, "r1");
-        assert_eq!(router.match_route("POST", "/api/v1/tokens", None).unwrap().id, "r2");
+        assert_eq!(
+            router.match_route("GET", "/api/v1/users", None).unwrap().id,
+            "r1"
+        );
+        assert_eq!(
+            router
+                .match_route("POST", "/api/v1/tokens", None)
+                .unwrap()
+                .id,
+            "r2"
+        );
         assert!(router.match_route("GET", "/api/v1/tokens", None).is_none());
     }
 
@@ -349,9 +370,18 @@ mod tests {
             make_route("r_del", "/resource", vec!["DELETE"]),
         ];
         let router = Router::build(routes, 1).unwrap();
-        assert_eq!(router.match_route("GET", "/resource", None).unwrap().id, "r_get");
-        assert_eq!(router.match_route("POST", "/resource", None).unwrap().id, "r_post");
-        assert_eq!(router.match_route("DELETE", "/resource", None).unwrap().id, "r_del");
+        assert_eq!(
+            router.match_route("GET", "/resource", None).unwrap().id,
+            "r_get"
+        );
+        assert_eq!(
+            router.match_route("POST", "/resource", None).unwrap().id,
+            "r_post"
+        );
+        assert_eq!(
+            router.match_route("DELETE", "/resource", None).unwrap().id,
+            "r_del"
+        );
         assert!(router.match_route("PUT", "/resource", None).is_none());
     }
 

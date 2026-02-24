@@ -26,7 +26,19 @@ impl ConfigWatcher {
         notify: crossbeam_channel::Sender<()>,
     ) -> anyhow::Result<()> {
         let mut client = etcd_client::Client::connect(endpoints, None).await?;
-        let prefix = format!("{}/", self.schema.routes_prefix().trim_end_matches('/').rsplit('/').skip(1).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/"));
+        let prefix = format!(
+            "{}/",
+            self.schema
+                .routes_prefix()
+                .trim_end_matches('/')
+                .rsplit('/')
+                .skip(1)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("/")
+        );
 
         info!(prefix = %prefix, "Starting etcd watcher");
 
@@ -37,11 +49,8 @@ impl ConfigWatcher {
             )
             .await?;
 
-        while let Ok(Ok(Some(resp))) = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            stream.message(),
-        )
-        .await
+        while let Ok(Ok(Some(resp))) =
+            tokio::time::timeout(std::time::Duration::from_secs(30), stream.message()).await
         {
             for event in resp.events() {
                 if let Some(kv) = event.kv() {
@@ -167,13 +176,21 @@ mod tests {
         let w = watcher();
         let cache = ConfigCache::new();
         let route1 = make_route("r1");
-        w.handle_put("/ando/routes/r1", &serde_json::to_vec(&route1).unwrap(), &cache);
+        w.handle_put(
+            "/ando/routes/r1",
+            &serde_json::to_vec(&route1).unwrap(),
+            &cache,
+        );
 
         let route2: Route = serde_json::from_value(serde_json::json!({
             "id": "r1", "uri": "/updated"
         }))
         .unwrap();
-        w.handle_put("/ando/routes/r1", &serde_json::to_vec(&route2).unwrap(), &cache);
+        w.handle_put(
+            "/ando/routes/r1",
+            &serde_json::to_vec(&route2).unwrap(),
+            &cache,
+        );
         assert_eq!(cache.routes.len(), 1);
         assert_eq!(cache.routes.get("r1").unwrap().uri, "/updated");
     }
@@ -185,7 +202,11 @@ mod tests {
         let w = watcher();
         let cache = ConfigCache::new();
         let svc = make_service("svc1");
-        w.handle_put("/ando/services/svc1", &serde_json::to_vec(&svc).unwrap(), &cache);
+        w.handle_put(
+            "/ando/services/svc1",
+            &serde_json::to_vec(&svc).unwrap(),
+            &cache,
+        );
         assert_eq!(cache.services.len(), 1);
         assert!(cache.services.get("svc1").is_some());
     }
@@ -197,7 +218,11 @@ mod tests {
         let w = watcher();
         let cache = ConfigCache::new();
         let ups = make_upstream("ups1");
-        w.handle_put("/ando/upstreams/ups1", &serde_json::to_vec(&ups).unwrap(), &cache);
+        w.handle_put(
+            "/ando/upstreams/ups1",
+            &serde_json::to_vec(&ups).unwrap(),
+            &cache,
+        );
         assert_eq!(cache.upstreams.len(), 1);
         assert!(cache.upstreams.get("ups1").is_some());
     }
@@ -327,9 +352,7 @@ mod tests {
         let w = watcher();
         let cache = ConfigCache::new();
         let consumer = make_consumer("alice", Some("secret-abc"));
-        cache
-            .consumers
-            .insert("alice".to_string(), consumer);
+        cache.consumers.insert("alice".to_string(), consumer);
         cache.rebuild_consumer_key_index();
         assert!(cache.find_consumer_by_key("secret-abc").is_some());
 
@@ -373,9 +396,21 @@ mod tests {
         let ups = make_upstream("ups1");
         let consumer = make_consumer("bob", Some("key-bob"));
 
-        w.handle_put("/ando/routes/r1", &serde_json::to_vec(&route).unwrap(), &cache);
-        w.handle_put("/ando/services/svc1", &serde_json::to_vec(&svc).unwrap(), &cache);
-        w.handle_put("/ando/upstreams/ups1", &serde_json::to_vec(&ups).unwrap(), &cache);
+        w.handle_put(
+            "/ando/routes/r1",
+            &serde_json::to_vec(&route).unwrap(),
+            &cache,
+        );
+        w.handle_put(
+            "/ando/services/svc1",
+            &serde_json::to_vec(&svc).unwrap(),
+            &cache,
+        );
+        w.handle_put(
+            "/ando/upstreams/ups1",
+            &serde_json::to_vec(&ups).unwrap(),
+            &cache,
+        );
         w.handle_put(
             "/ando/consumers/bob",
             &serde_json::to_vec(&consumer).unwrap(),

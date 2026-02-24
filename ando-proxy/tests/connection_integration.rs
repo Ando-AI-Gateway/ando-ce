@@ -60,7 +60,9 @@ fn handle_connection_404_no_matching_route() {
             .await
             .unwrap();
         let (_, _) = client
-            .write_all(b"GET /missing HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec())
+            .write_all(
+                b"GET /missing HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec(),
+            )
             .await;
 
         let buf = vec![0u8; 512];
@@ -138,7 +140,9 @@ fn handle_connection_502_upstream_unreachable() {
             .await
             .unwrap();
         let (_, _) = client
-            .write_all(b"GET /dead HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec())
+            .write_all(
+                b"GET /dead HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec(),
+            )
             .await;
 
         let buf = vec![0u8; 512];
@@ -199,7 +203,10 @@ fn handle_connection_plugin_response_key_auth_blocks_missing_key() {
         let (n, buf) = client.read(buf).await;
         let n = n.unwrap_or(0);
         let first = status_line(&buf[..n]);
-        assert!(first.contains("401"), "Expected 401 from key-auth, got: {first:?}");
+        assert!(
+            first.contains("401"),
+            "Expected 401 from key-auth, got: {first:?}"
+        );
     });
 }
 
@@ -279,14 +286,17 @@ fn handle_connection_keepalive_two_requests_same_conn() {
     drop(echo_listener);
 
     make_rt().block_on(async {
-        let echo = monoio::net::TcpListener::bind(format!("127.0.0.1:{}", echo_addr.port()).as_str()).unwrap();
+        let echo =
+            monoio::net::TcpListener::bind(format!("127.0.0.1:{}", echo_addr.port()).as_str())
+                .unwrap();
         monoio::spawn(async move {
             // Serve two requests on possibly different connections
             for _ in 0..2 {
                 if let Ok((mut stream, _)) = echo.accept().await {
                     let buf = vec![0u8; 4096];
                     let (_n, _buf) = stream.read(buf).await;
-                    let resp = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
+                    let resp =
+                        b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
                     let (_, _) = stream.write_all(resp.to_vec()).await;
                 }
             }
@@ -320,29 +330,31 @@ fn handle_connection_keepalive_two_requests_same_conn() {
 
         // First request — keepalive (no "connection: close")
         let (_, _) = client
-            .write_all(
-                b"GET /ka HTTP/1.1\r\nhost: localhost\r\n\r\n".to_vec(),
-            )
+            .write_all(b"GET /ka HTTP/1.1\r\nhost: localhost\r\n\r\n".to_vec())
             .await;
 
         let buf = vec![0u8; 1024];
         let (n, buf) = client.read(buf).await;
         let n = n.unwrap_or(0);
         let first = std::str::from_utf8(&buf[..n]).unwrap_or("");
-        assert!(first.contains("200"), "First req expected 200, got: {first:?}");
+        assert!(
+            first.contains("200"),
+            "First req expected 200, got: {first:?}"
+        );
 
         // Second request on same connection
         let (_, _) = client
-            .write_all(
-                b"GET /ka HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec(),
-            )
+            .write_all(b"GET /ka HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n".to_vec())
             .await;
 
         let buf2 = vec![0u8; 1024];
         let (n2, buf2) = client.read(buf2).await;
         let n2 = n2.unwrap_or(0);
         let second = std::str::from_utf8(&buf2[..n2]).unwrap_or("");
-        assert!(second.contains("200"), "Second req expected 200, got: {second:?}");
+        assert!(
+            second.contains("200"),
+            "Second req expected 200, got: {second:?}"
+        );
     });
 }
 

@@ -38,7 +38,9 @@ impl MetricsCollector {
         let http_request_duration = HistogramVec::new(
             HistogramOpts::new("ando_http_request_duration_seconds", "Request latency")
                 .namespace("ando")
-                .buckets(vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]),
+                .buckets(vec![
+                    0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                ]),
             &["route"],
         )?;
 
@@ -66,7 +68,9 @@ impl MetricsCollector {
         if let Some(ref counter) = self.http_requests_total {
             let mut buf = itoa::Buffer::new();
             let status_str = buf.format(status);
-            counter.with_label_values(&[route, method, status_str]).inc();
+            counter
+                .with_label_values(&[route, method, status_str])
+                .inc();
         }
         if let Some(ref hist) = self.http_request_duration {
             hist.with_label_values(&[route]).observe(duration_secs);
@@ -171,7 +175,13 @@ mod tests {
         mc.record_request("route-a", "GET", 200, 0.03);
 
         let counter = mc.http_requests_total.as_ref().unwrap();
-        assert_eq!(counter.with_label_values(&["route-a", "GET", "200"]).get(), 2);
-        assert_eq!(counter.with_label_values(&["route-b", "POST", "201"]).get(), 1);
+        assert_eq!(
+            counter.with_label_values(&["route-a", "GET", "200"]).get(),
+            2
+        );
+        assert_eq!(
+            counter.with_label_values(&["route-b", "POST", "201"]).get(),
+            1
+        );
     }
 }

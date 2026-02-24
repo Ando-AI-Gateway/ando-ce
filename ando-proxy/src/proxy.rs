@@ -88,15 +88,18 @@ impl ProxyWorker {
     fn snapshot_from_cache(&mut self) {
         self.upstreams.clear();
         for entry in self.config_cache.upstreams.iter() {
-            self.upstreams.insert(entry.key().clone(), entry.value().clone());
+            self.upstreams
+                .insert(entry.key().clone(), entry.value().clone());
         }
         self.services.clear();
         for entry in self.config_cache.services.iter() {
-            self.services.insert(entry.key().clone(), entry.value().clone());
+            self.services
+                .insert(entry.key().clone(), entry.value().clone());
         }
         self.consumer_keys.clear();
         for entry in self.config_cache.consumer_key_index.iter() {
-            self.consumer_keys.insert(entry.key().clone(), entry.value().clone());
+            self.consumer_keys
+                .insert(entry.key().clone(), entry.value().clone());
         }
     }
 
@@ -155,7 +158,10 @@ impl ProxyWorker {
 
         // ── FAST PATH: no plugins → proxy directly ──
         if !has_plugins {
-            return RequestResult::Proxy { upstream_addr, upstream_path };
+            return RequestResult::Proxy {
+                upstream_addr,
+                upstream_path,
+            };
         }
 
         // ── SLOW PATH: plugin pipeline ──
@@ -179,7 +185,11 @@ impl ProxyWorker {
         for phase in &[Phase::Rewrite, Phase::Access] {
             match pipeline.execute_phase(*phase, &mut ctx) {
                 PluginResult::Continue => {}
-                PluginResult::Response { status, headers, body } => {
+                PluginResult::Response {
+                    status,
+                    headers,
+                    body,
+                } => {
                     return RequestResult::PluginResponse {
                         status,
                         headers,
@@ -202,7 +212,11 @@ impl ProxyWorker {
         // Before proxy phase
         match pipeline.execute_phase(Phase::BeforeProxy, &mut ctx) {
             PluginResult::Continue => {}
-            PluginResult::Response { status, headers, body } => {
+            PluginResult::Response {
+                status,
+                headers,
+                body,
+            } => {
                 return RequestResult::PluginResponse {
                     status,
                     headers,
@@ -211,7 +225,10 @@ impl ProxyWorker {
             }
         }
 
-        RequestResult::Proxy { upstream_addr, upstream_path }
+        RequestResult::Proxy {
+            upstream_addr,
+            upstream_path,
+        }
     }
 
     /// Resolve upstream address from local snapshot (never DashMap).
@@ -280,7 +297,8 @@ impl ProxyWorker {
         }
 
         let pipeline = Arc::new(PluginPipeline::build(instances, has_auth));
-        self.pipeline_cache.insert(route_id.to_string(), Arc::clone(&pipeline));
+        self.pipeline_cache
+            .insert(route_id.to_string(), Arc::clone(&pipeline));
         pipeline
     }
 }
@@ -290,7 +308,10 @@ impl ProxyWorker {
 #[derive(Debug)]
 pub enum RequestResult {
     /// Proxy to upstream at this address, forwarding the given path.
-    Proxy { upstream_addr: String, upstream_path: String },
+    Proxy {
+        upstream_addr: String,
+        upstream_path: String,
+    },
     /// Send a pre-built static response (zero alloc).
     Static(&'static [u8]),
     /// Send a plugin-generated response.
@@ -328,7 +349,10 @@ impl ConnPool {
 
     #[inline]
     pub fn put(&mut self, addr: String, stream: TcpStream) {
-        let queue = self.pools.entry(addr).or_insert_with(|| VecDeque::with_capacity(self.max_idle));
+        let queue = self
+            .pools
+            .entry(addr)
+            .or_insert_with(|| VecDeque::with_capacity(self.max_idle));
         if queue.len() < self.max_idle {
             queue.push_back(stream);
         }
@@ -347,7 +371,9 @@ impl ConnPool {
                     use std::net::ToSocketAddrs;
                     let all: Vec<_> = addr.as_str().to_socket_addrs().ok()?.collect();
                     // prefer IPv4
-                    all.iter().copied().find(|a| a.is_ipv4())
+                    all.iter()
+                        .copied()
+                        .find(|a| a.is_ipv4())
                         .or_else(|| all.into_iter().next())
                 });
                 match parsed {
@@ -359,7 +385,10 @@ impl ConnPool {
                 }
             };
             let target = count.min(self.max_idle);
-            let queue = self.pools.entry(addr.clone()).or_insert_with(|| VecDeque::with_capacity(target));
+            let queue = self
+                .pools
+                .entry(addr.clone())
+                .or_insert_with(|| VecDeque::with_capacity(target));
             for _ in 0..target {
                 match TcpStream::connect(socket_addr).await {
                     Ok(stream) => {
@@ -417,9 +446,9 @@ pub fn compute_upstream_path(route_uri: &str, request_path: &str, strip_prefix: 
     }
     // Derive the prefix to strip: everything before the trailing "/*" or "*"
     let prefix = if route_uri.ends_with("/*") {
-        &route_uri[..route_uri.len() - 2]   // "/api/v1/*" → "/api/v1"
+        &route_uri[..route_uri.len() - 2] // "/api/v1/*" → "/api/v1"
     } else if route_uri.ends_with('*') {
-        &route_uri[..route_uri.len() - 1]   // "/api/v1*"  → "/api/v1"
+        &route_uri[..route_uri.len() - 1] // "/api/v1*"  → "/api/v1"
     } else {
         // Exact route: strip the whole path, forward "/"
         return "/".to_string();
@@ -512,7 +541,11 @@ mod tests {
 
     // ── Helpers ──────────────────────────────────────────────────
 
-    fn make_worker_with_registry(routes: Vec<Route>, registry: PluginRegistry, cache: ConfigCache) -> ProxyWorker {
+    fn make_worker_with_registry(
+        routes: Vec<Route>,
+        registry: PluginRegistry,
+        cache: ConfigCache,
+    ) -> ProxyWorker {
         let router = Arc::new(Router::build(routes, 1).unwrap());
         let config = Arc::new(GatewayConfig::default());
         ProxyWorker::new(router, Arc::new(registry), cache, config)
@@ -528,7 +561,8 @@ mod tests {
             "uri": uri,
             "status": 1,
             "upstream": { "nodes": { upstream_addr: 1 }, "type": "roundrobin" }
-        })).unwrap()
+        }))
+        .unwrap()
     }
 
     fn route_with_key_auth(id: &str, uri: &str, upstream_addr: &str) -> Route {
@@ -538,7 +572,8 @@ mod tests {
             "status": 1,
             "plugins": { "key-auth": {} },
             "upstream": { "nodes": { upstream_addr: 1 }, "type": "roundrobin" }
-        })).unwrap()
+        }))
+        .unwrap()
     }
 
     // ── status_text ──────────────────────────────────────────────
@@ -571,14 +606,26 @@ mod tests {
 
     #[test]
     fn compute_upstream_path_no_strip_returns_original() {
-        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/users", false), "/api/v1/users");
-        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/", false), "/api/v1/");
+        assert_eq!(
+            compute_upstream_path("/api/v1/*", "/api/v1/users", false),
+            "/api/v1/users"
+        );
+        assert_eq!(
+            compute_upstream_path("/api/v1/*", "/api/v1/", false),
+            "/api/v1/"
+        );
     }
 
     #[test]
     fn compute_upstream_path_strip_wildcard_prefix() {
-        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/users", true), "/users");
-        assert_eq!(compute_upstream_path("/api/v1/*", "/api/v1/a/b/c", true), "/a/b/c");
+        assert_eq!(
+            compute_upstream_path("/api/v1/*", "/api/v1/users", true),
+            "/users"
+        );
+        assert_eq!(
+            compute_upstream_path("/api/v1/*", "/api/v1/a/b/c", true),
+            "/a/b/c"
+        );
     }
 
     #[test]
@@ -596,7 +643,10 @@ mod tests {
     #[test]
     fn compute_upstream_path_prefix_not_matching_returns_original() {
         // Safety: if prefix doesn't match, pass through unchanged
-        assert_eq!(compute_upstream_path("/api/v1/*", "/other/path", true), "/other/path");
+        assert_eq!(
+            compute_upstream_path("/api/v1/*", "/other/path", true),
+            "/other/path"
+        );
     }
 
     // ── build_response ───────────────────────────────────────────
@@ -606,9 +656,18 @@ mod tests {
         let mut buf = Vec::new();
         build_response(&mut buf, 200, &[], b"hello");
         let text = String::from_utf8(buf).unwrap();
-        assert!(text.starts_with("HTTP/1.1 200 OK\r\n"), "must start with status line");
-        assert!(text.contains("content-length: 5\r\n"), "must contain correct content-length");
-        assert!(text.contains("connection: keep-alive\r\n"), "must contain keep-alive");
+        assert!(
+            text.starts_with("HTTP/1.1 200 OK\r\n"),
+            "must start with status line"
+        );
+        assert!(
+            text.contains("content-length: 5\r\n"),
+            "must contain correct content-length"
+        );
+        assert!(
+            text.contains("connection: keep-alive\r\n"),
+            "must contain keep-alive"
+        );
         assert!(text.ends_with("hello"), "body must be at end");
     }
 
@@ -709,7 +768,8 @@ mod tests {
         let route: Route = serde_json::from_value(serde_json::json!({
             "id": "r1", "uri": "/disabled", "status": 0,
             "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
         let result = w.handle_request("GET", "/disabled", None, &[], "1.2.3.4");
         assert!(matches!(result, RequestResult::Static(RESP_404)));
@@ -721,7 +781,8 @@ mod tests {
             "id": "r1", "uri": "/api/*", "status": 1,
             "methods": ["GET"],
             "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
         let result = w.handle_request("GET", "/api/users/list", None, &[], "1.2.3.4");
         assert!(matches!(result, RequestResult::Proxy { .. }));
@@ -733,7 +794,8 @@ mod tests {
             "id": "r1", "uri": "/api/v1/*", "status": 1,
             "strip_prefix": true,
             "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
 
         // /api/v1/users → /users
@@ -755,11 +817,14 @@ mod tests {
             "id": "r1", "uri": "/api/v1/*", "status": 1,
             "strip_prefix": false,
             "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
 
         match w.handle_request("GET", "/api/v1/users", None, &[], "x") {
-            RequestResult::Proxy { upstream_path, .. } => assert_eq!(upstream_path, "/api/v1/users"),
+            RequestResult::Proxy { upstream_path, .. } => {
+                assert_eq!(upstream_path, "/api/v1/users")
+            }
             other => panic!("Expected Proxy, got {:?}", other),
         }
     }
@@ -770,10 +835,17 @@ mod tests {
             "id": "r1", "uri": "/only-get",
             "methods": ["GET"], "status": 1,
             "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
-        assert!(matches!(w.handle_request("GET", "/only-get", None, &[], "x"), RequestResult::Proxy { .. }));
-        assert!(matches!(w.handle_request("POST", "/only-get", None, &[], "x"), RequestResult::Static(RESP_404)));
+        assert!(matches!(
+            w.handle_request("GET", "/only-get", None, &[], "x"),
+            RequestResult::Proxy { .. }
+        ));
+        assert!(matches!(
+            w.handle_request("POST", "/only-get", None, &[], "x"),
+            RequestResult::Static(RESP_404)
+        ));
     }
 
     // ── handle_request — key-auth plugin ────────────────────────
@@ -802,8 +874,10 @@ mod tests {
         let mut w = make_worker_with_registry(vec![route], registry, ConfigCache::new());
 
         let result = w.handle_request("GET", "/secure", None, &[("apikey", "bad-key")], "1.2.3.4");
-        assert!(matches!(result, RequestResult::Static(RESP_401_INVALID)),
-            "wrong consumer key must return RESP_401_INVALID");
+        assert!(
+            matches!(result, RequestResult::Static(RESP_401_INVALID)),
+            "wrong consumer key must return RESP_401_INVALID"
+        );
     }
 
     #[test]
@@ -815,19 +889,33 @@ mod tests {
         // Add consumer with a known key
         let cache = ConfigCache::new();
         let mut plugins: HashMap<String, serde_json::Value> = HashMap::new();
-        plugins.insert("key-auth".to_string(), serde_json::json!({ "key": "valid-key-123" }));
-        cache.consumers.insert("alice".to_string(), Consumer {
-            username: "alice".to_string(),
-            plugins,
-            desc: None,
-            labels: HashMap::new(),
-        });
+        plugins.insert(
+            "key-auth".to_string(),
+            serde_json::json!({ "key": "valid-key-123" }),
+        );
+        cache.consumers.insert(
+            "alice".to_string(),
+            Consumer {
+                username: "alice".to_string(),
+                plugins,
+                desc: None,
+                labels: HashMap::new(),
+            },
+        );
         cache.rebuild_consumer_key_index();
 
         let mut w = make_worker_with_registry(vec![route], registry, cache);
-        let result = w.handle_request("GET", "/secure", None, &[("apikey", "valid-key-123")], "1.2.3.4");
-        assert!(matches!(result, RequestResult::Proxy { .. }),
-            "valid consumer key must proxy the request");
+        let result = w.handle_request(
+            "GET",
+            "/secure",
+            None,
+            &[("apikey", "valid-key-123")],
+            "1.2.3.4",
+        );
+        assert!(
+            matches!(result, RequestResult::Proxy { .. }),
+            "valid consumer key must proxy the request"
+        );
     }
 
     // ── maybe_update_router ──────────────────────────────────────
@@ -847,10 +935,13 @@ mod tests {
         let routes = vec![simple_route("r1", "/a", "127.0.0.1:8080")];
         let mut w = make_worker(routes);
         let old_version = w.router_version;
-        let new_router = Arc::new(Router::build(
-            vec![simple_route("r2", "/b", "127.0.0.1:9090")],
-            old_version + 1,
-        ).unwrap());
+        let new_router = Arc::new(
+            Router::build(
+                vec![simple_route("r2", "/b", "127.0.0.1:9090")],
+                old_version + 1,
+            )
+            .unwrap(),
+        );
         w.maybe_update_router(Arc::clone(&new_router));
         assert_eq!(w.router_version, old_version + 1);
         // New route should now match
@@ -874,13 +965,16 @@ mod tests {
     fn handle_request_no_upstream_falls_back_to_localhost() {
         let route: Route = serde_json::from_value(serde_json::json!({
             "id": "r1", "uri": "/no-ups", "status": 1
-        })).unwrap();
+        }))
+        .unwrap();
         let mut w = make_worker(vec![route]);
         let result = w.handle_request("GET", "/no-ups", None, &[], "x");
         match result {
             RequestResult::Proxy { upstream_addr, .. } => {
-                assert_eq!(upstream_addr, "127.0.0.1:80",
-                    "route with no upstream should fallback to 127.0.0.1:80");
+                assert_eq!(
+                    upstream_addr, "127.0.0.1:80",
+                    "route with no upstream should fallback to 127.0.0.1:80"
+                );
             }
             other => panic!("Expected Proxy, got {:?}", other),
         }
@@ -893,13 +987,15 @@ mod tests {
         let route: Route = serde_json::from_value(serde_json::json!({
             "id": "r1", "uri": "/ref-ups", "status": 1,
             "upstream_id": "ups1"
-        })).unwrap();
+        }))
+        .unwrap();
         let cache = ConfigCache::new();
         let ups: Upstream = serde_json::from_value(serde_json::json!({
             "id": "ups1",
             "nodes": { "10.0.0.2:9090": 1 },
             "type": "roundrobin"
-        })).unwrap();
+        }))
+        .unwrap();
         cache.upstreams.insert("ups1".to_string(), ups);
 
         let mut w = make_worker_with_registry(vec![route], PluginRegistry::new(), cache);
@@ -919,16 +1015,21 @@ mod tests {
         let route: Route = serde_json::from_value(serde_json::json!({
             "id": "r1", "uri": "/svc", "status": 1,
             "service_id": "svc1"
-        })).unwrap();
+        }))
+        .unwrap();
         let cache = ConfigCache::new();
         let svc = ando_core::service::Service {
             id: "svc1".into(),
-            name: None, desc: None,
+            name: None,
+            desc: None,
             upstream_id: None,
-            upstream: Some(serde_json::from_value(serde_json::json!({
-                "nodes": { "10.0.0.3:7070": 1 },
-                "type": "roundrobin"
-            })).unwrap()),
+            upstream: Some(
+                serde_json::from_value(serde_json::json!({
+                    "nodes": { "10.0.0.3:7070": 1 },
+                    "type": "roundrobin"
+                }))
+                .unwrap(),
+            ),
             plugins: HashMap::new(),
             labels: HashMap::new(),
         };
@@ -955,12 +1056,19 @@ mod tests {
 
         // First request — builds pipeline
         let _ = w.handle_request("GET", "/cached", None, &[("apikey", "k")], "x");
-        assert!(w.pipeline_cache.contains_key("r1"), "pipeline must be cached");
+        assert!(
+            w.pipeline_cache.contains_key("r1"),
+            "pipeline must be cached"
+        );
 
         // Second request — uses cache (same route_id)
         let before_len = w.pipeline_cache.len();
         let _ = w.handle_request("GET", "/cached", None, &[("apikey", "k")], "x");
-        assert_eq!(w.pipeline_cache.len(), before_len, "cache should not grow for same route");
+        assert_eq!(
+            w.pipeline_cache.len(),
+            before_len,
+            "cache should not grow for same route"
+        );
     }
 
     // ── maybe_update_router clears pipeline cache ────────────────
@@ -979,7 +1087,10 @@ mod tests {
         // Config update (new version)
         let new_router = Arc::new(Router::build(vec![route], w.router_version + 1).unwrap());
         w.maybe_update_router(new_router);
-        assert!(w.pipeline_cache.is_empty(), "pipeline cache must be cleared on router update");
+        assert!(
+            w.pipeline_cache.is_empty(),
+            "pipeline cache must be cleared on router update"
+        );
     }
 
     // ── ConnPool: take from empty returns None ───────────────────
@@ -1003,8 +1114,10 @@ mod tests {
         let mut buf = Vec::new();
         build_upstream_request(&mut buf, "GET", "/test", &[], b"");
         let text = String::from_utf8(buf).unwrap();
-        assert!(!text.contains("content-length:"),
-            "GET with empty body should not add content-length");
+        assert!(
+            !text.contains("content-length:"),
+            "GET with empty body should not add content-length"
+        );
     }
 
     // ── build_response: non-standard status code ─────────────────

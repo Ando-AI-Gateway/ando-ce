@@ -48,7 +48,7 @@ pub const ALWAYS_SENSITIVE_HEADERS: &[&str] = &[
     "x-auth-token",
     "x-access-token",
     "proxy-authorization",
-    "www-authenticate",   // may echo challenge with realm/nonce details
+    "www-authenticate", // may echo challenge with realm/nonce details
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -177,7 +177,9 @@ pub fn compile_patterns(patterns: &[String]) -> Vec<Regex> {
     patterns
         .iter()
         .filter_map(|p| {
-            Regex::new(p).map_err(|e| tracing::warn!("invalid PII redaction pattern {:?}: {}", p, e)).ok()
+            Regex::new(p)
+                .map_err(|e| tracing::warn!("invalid PII redaction pattern {:?}: {}", p, e))
+                .ok()
         })
         .collect()
 }

@@ -62,7 +62,9 @@ pub struct Route {
     pub labels: HashMap<String, String>,
 }
 
-fn default_status() -> u8 { 1 }
+fn default_status() -> u8 {
+    1
+}
 
 impl Route {
     /// Returns true if this route has any plugins (from route-level config).
@@ -135,7 +137,9 @@ mod tests {
     #[test]
     fn test_has_plugins_with_plugin_map() {
         let mut route = make_route("/api", vec![]);
-        route.plugins.insert("key-auth".to_string(), serde_json::json!({}));
+        route
+            .plugins
+            .insert("key-auth".to_string(), serde_json::json!({}));
         assert!(route.has_plugins());
     }
 
@@ -163,7 +167,10 @@ mod tests {
     #[test]
     fn test_serde_roundtrip() {
         let mut route = make_route("/api/users", vec!["GET", "POST"]);
-        route.plugins.insert("key-auth".to_string(), serde_json::json!({"header": "x-api-key"}));
+        route.plugins.insert(
+            "key-auth".to_string(),
+            serde_json::json!({"header": "x-api-key"}),
+        );
         route.upstream_id = Some("us1".to_string());
         let json = serde_json::to_string(&route).unwrap();
         let decoded: Route = serde_json::from_str(&json).unwrap();

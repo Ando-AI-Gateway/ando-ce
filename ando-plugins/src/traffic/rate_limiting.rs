@@ -107,7 +107,13 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_ctx(ip: &str) -> PluginContext {
-        PluginContext::new("r1".into(), ip.into(), "GET".into(), "/".into(), HashMap::new())
+        PluginContext::new(
+            "r1".into(),
+            ip.into(),
+            "GET".into(),
+            "/".into(),
+            HashMap::new(),
+        )
     }
 
     fn instance(count: u64, time_window: u64) -> RateLimitingInstance {
@@ -148,9 +154,15 @@ mod tests {
         let inst = instance(1, 60);
         // First IP hits limit
         inst.access(&mut make_ctx("1.1.1.1"));
-        assert!(matches!(inst.access(&mut make_ctx("1.1.1.1")), PluginResult::Response { status: 429, .. }));
+        assert!(matches!(
+            inst.access(&mut make_ctx("1.1.1.1")),
+            PluginResult::Response { status: 429, .. }
+        ));
         // Second IP is unaffected
-        assert!(matches!(inst.access(&mut make_ctx("2.2.2.2")), PluginResult::Continue));
+        assert!(matches!(
+            inst.access(&mut make_ctx("2.2.2.2")),
+            PluginResult::Continue
+        ));
     }
 
     // ── Window reset ─────────────────────────────────────────────
@@ -165,13 +177,19 @@ mod tests {
         };
 
         // First request — within limit
-        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
+        assert!(matches!(
+            inst.access(&mut make_ctx("1.2.3.4")),
+            PluginResult::Continue
+        ));
 
         // Sleep past the window
         std::thread::sleep(Duration::from_millis(5));
 
         // Window should have reset — first request of new window
-        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
+        assert!(matches!(
+            inst.access(&mut make_ctx("1.2.3.4")),
+            PluginResult::Continue
+        ));
     }
 
     // ── Limit = 0 blocks all requests ────────────────────────────
@@ -218,13 +236,19 @@ mod tests {
     #[test]
     fn configure_missing_count_fails() {
         let config = serde_json::json!({ "time_window": 60 });
-        assert!(RateLimitingPlugin.configure(&config).is_err(), "Missing 'count' must fail");
+        assert!(
+            RateLimitingPlugin.configure(&config).is_err(),
+            "Missing 'count' must fail"
+        );
     }
 
     #[test]
     fn configure_missing_time_window_fails() {
         let config = serde_json::json!({ "count": 10 });
-        assert!(RateLimitingPlugin.configure(&config).is_err(), "Missing 'time_window' must fail");
+        assert!(
+            RateLimitingPlugin.configure(&config).is_err(),
+            "Missing 'time_window' must fail"
+        );
     }
 
     #[test]
@@ -233,8 +257,14 @@ mod tests {
         let instance = RateLimitingPlugin.configure(&config).unwrap();
         let mut ctx = make_ctx("5.5.5.5");
         assert!(matches!(instance.access(&mut ctx), PluginResult::Continue));
-        assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Continue));
-        assert!(matches!(instance.access(&mut make_ctx("5.5.5.5")), PluginResult::Response { status: 429, .. }));
+        assert!(matches!(
+            instance.access(&mut make_ctx("5.5.5.5")),
+            PluginResult::Continue
+        ));
+        assert!(matches!(
+            instance.access(&mut make_ctx("5.5.5.5")),
+            PluginResult::Response { status: 429, .. }
+        ));
     }
 
     // ── Per-worker semantics: each instance is independent ───────
@@ -247,11 +277,20 @@ mod tests {
         let instance_b = RateLimitingPlugin.configure(&config).unwrap();
 
         // Worker A: first request passes
-        assert!(matches!(instance_a.access(&mut make_ctx("1.1.1.1")), PluginResult::Continue));
+        assert!(matches!(
+            instance_a.access(&mut make_ctx("1.1.1.1")),
+            PluginResult::Continue
+        ));
         // Worker A: second request blocked
-        assert!(matches!(instance_a.access(&mut make_ctx("1.1.1.1")), PluginResult::Response { status: 429, .. }));
+        assert!(matches!(
+            instance_a.access(&mut make_ctx("1.1.1.1")),
+            PluginResult::Response { status: 429, .. }
+        ));
         // Worker B: same IP, first request still passes (independent counter)
-        assert!(matches!(instance_b.access(&mut make_ctx("1.1.1.1")), PluginResult::Continue));
+        assert!(matches!(
+            instance_b.access(&mut make_ctx("1.1.1.1")),
+            PluginResult::Continue
+        ));
     }
 
     // ── Mutex is not poisoned after panic in another thread ──────
@@ -289,6 +328,9 @@ mod tests {
     #[test]
     fn large_time_window_does_not_panic() {
         let inst = instance(100, 86400 * 365); // 1-year window
-        assert!(matches!(inst.access(&mut make_ctx("1.2.3.4")), PluginResult::Continue));
+        assert!(matches!(
+            inst.access(&mut make_ctx("1.2.3.4")),
+            PluginResult::Continue
+        ));
     }
 }

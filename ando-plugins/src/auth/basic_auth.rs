@@ -1,6 +1,6 @@
 use ando_plugin::plugin::{Phase, Plugin, PluginContext, PluginInstance, PluginResult};
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 /// Basic-auth plugin — APISIX-compatible.
 ///
@@ -45,7 +45,10 @@ impl PluginInstance for BasicAuthInstance {
             }
         };
 
-        let encoded = match header.strip_prefix("Basic ").or_else(|| header.strip_prefix("basic ")) {
+        let encoded = match header
+            .strip_prefix("Basic ")
+            .or_else(|| header.strip_prefix("basic "))
+        {
             Some(e) => e,
             None => {
                 return deny_401(br#"{"error":"Invalid authorization scheme","status":401}"#);
@@ -73,8 +76,14 @@ impl PluginInstance for BasicAuthInstance {
             }
         };
 
-        ctx.vars.insert("_basic_auth_user".to_string(), serde_json::Value::String(username));
-        ctx.vars.insert("_basic_auth_pass".to_string(), serde_json::Value::String(password));
+        ctx.vars.insert(
+            "_basic_auth_user".to_string(),
+            serde_json::Value::String(username),
+        );
+        ctx.vars.insert(
+            "_basic_auth_pass".to_string(),
+            serde_json::Value::String(password),
+        );
 
         PluginResult::Continue
     }
@@ -85,7 +94,10 @@ fn deny_401(body: &'static [u8]) -> PluginResult {
         status: 401,
         headers: vec![
             ("content-type".to_string(), "application/json".to_string()),
-            ("www-authenticate".to_string(), r#"Basic realm="Ando""#.to_string()),
+            (
+                "www-authenticate".to_string(),
+                r#"Basic realm="Ando""#.to_string(),
+            ),
         ],
         body: Some(body.to_vec()),
     }
@@ -206,6 +218,9 @@ mod tests {
         let instance = BasicAuthPlugin.configure(&serde_json::json!({})).unwrap();
         // Verify the instance works — missing header → 401
         let mut ctx = make_ctx(vec![]);
-        assert!(matches!(instance.access(&mut ctx), PluginResult::Response { status: 401, .. }));
+        assert!(matches!(
+            instance.access(&mut ctx),
+            PluginResult::Response { status: 401, .. }
+        ));
     }
 }

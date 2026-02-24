@@ -1,5 +1,5 @@
 use axum::extract::Path;
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::Embed;
 
@@ -37,11 +37,14 @@ fn serve_embedded(path: &str) -> Response {
                 StatusCode::OK,
                 [
                     (header::CONTENT_TYPE, mime),
-                    (header::CACHE_CONTROL, if path.contains("/_next/") {
-                        "public, max-age=31536000, immutable"
-                    } else {
-                        "no-cache"
-                    }),
+                    (
+                        header::CACHE_CONTROL,
+                        if path.contains("/_next/") {
+                            "public, max-age=31536000, immutable"
+                        } else {
+                            "no-cache"
+                        },
+                    ),
                 ],
                 file.data.into_owned(),
             )

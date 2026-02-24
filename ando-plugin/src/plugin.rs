@@ -86,7 +86,9 @@ pub trait Plugin: Send + Sync {
     fn name(&self) -> &str;
 
     /// Plugin priority (higher = runs first within a phase).
-    fn priority(&self) -> i32 { 0 }
+    fn priority(&self) -> i32 {
+        0
+    }
 
     /// Which phases this plugin participates in.
     fn phases(&self) -> &[Phase];
@@ -101,19 +103,29 @@ pub trait PluginInstance: Send + Sync {
     fn name(&self) -> &str;
 
     /// Priority.
-    fn priority(&self) -> i32 { 0 }
+    fn priority(&self) -> i32 {
+        0
+    }
 
     /// Execute the rewrite phase.
-    fn rewrite(&self, _ctx: &mut PluginContext) -> PluginResult { PluginResult::Continue }
+    fn rewrite(&self, _ctx: &mut PluginContext) -> PluginResult {
+        PluginResult::Continue
+    }
 
     /// Execute the access phase (auth, rate limiting, etc.).
-    fn access(&self, _ctx: &mut PluginContext) -> PluginResult { PluginResult::Continue }
+    fn access(&self, _ctx: &mut PluginContext) -> PluginResult {
+        PluginResult::Continue
+    }
 
     /// Execute before proxying upstream.
-    fn before_proxy(&self, _ctx: &mut PluginContext) -> PluginResult { PluginResult::Continue }
+    fn before_proxy(&self, _ctx: &mut PluginContext) -> PluginResult {
+        PluginResult::Continue
+    }
 
     /// Execute header filter phase.
-    fn header_filter(&self, _ctx: &mut PluginContext) -> PluginResult { PluginResult::Continue }
+    fn header_filter(&self, _ctx: &mut PluginContext) -> PluginResult {
+        PluginResult::Continue
+    }
 
     /// Execute body filter phase.
     fn body_filter(&self, _ctx: &mut PluginContext, _body: &mut Vec<u8>) -> PluginResult {
@@ -145,7 +157,10 @@ mod tests {
 
     #[test]
     fn test_context_fields() {
-        let ctx = make_ctx(vec![("apikey", "my-key"), ("content-type", "application/json")]);
+        let ctx = make_ctx(vec![
+            ("apikey", "my-key"),
+            ("content-type", "application/json"),
+        ]);
         assert_eq!(ctx.route_id, "route1");
         assert_eq!(ctx.client_ip, "127.0.0.1");
         assert_eq!(ctx.method, "GET");

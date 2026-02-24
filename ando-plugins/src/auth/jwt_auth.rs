@@ -1,5 +1,5 @@
 use ando_plugin::plugin::{Phase, Plugin, PluginContext, PluginInstance, PluginResult};
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
 pub struct JwtAuthPlugin;
@@ -66,17 +66,15 @@ impl Plugin for JwtAuthPlugin {
 
         let decoding_key = match algorithm {
             Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => {
-                let secret = cfg
-                    .secret
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("jwt-auth requires 'secret' for HMAC algorithms"))?;
+                let secret = cfg.secret.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!("jwt-auth requires 'secret' for HMAC algorithms")
+                })?;
                 DecodingKey::from_secret(secret.as_bytes())
             }
             _ => {
-                let key = cfg
-                    .public_key
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("jwt-auth requires 'public_key' for asymmetric algorithms"))?;
+                let key = cfg.public_key.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!("jwt-auth requires 'public_key' for asymmetric algorithms")
+                })?;
                 DecodingKey::from_rsa_pem(key.as_bytes())
                     .map_err(|e| anyhow::anyhow!("invalid public key: {e}"))?
             }
@@ -136,7 +134,8 @@ impl PluginInstance for JwtAuthInstance {
 
         if let Some(sub) = data.claims.sub {
             ctx.consumer = Some(sub.clone());
-            ctx.vars.insert("_jwt_sub".to_string(), serde_json::Value::String(sub));
+            ctx.vars
+                .insert("_jwt_sub".to_string(), serde_json::Value::String(sub));
         }
 
         PluginResult::Continue
@@ -157,8 +156,8 @@ fn deny_401(body: &'static [u8]) -> PluginResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jsonwebtoken::{EncodingKey, Header, encode};
     use std::collections::HashMap;
-    use jsonwebtoken::{encode, EncodingKey, Header};
 
     const SECRET: &str = "test-secret-key";
 
@@ -167,7 +166,13 @@ mod tests {
         if let Some(v) = auth {
             headers.insert("authorization".to_string(), v.to_string());
         }
-        PluginContext::new("r1".into(), "1.2.3.4".into(), "GET".into(), "/api".into(), headers)
+        PluginContext::new(
+            "r1".into(),
+            "1.2.3.4".into(),
+            "GET".into(),
+            "/api".into(),
+            headers,
+        )
     }
 
     fn make_instance() -> JwtAuthInstance {
@@ -327,7 +332,13 @@ mod tests {
         let token = make_token("user", 3600);
         let mut headers = HashMap::new();
         headers.insert("x-token".to_string(), format!("Bearer {token}"));
-        let mut ctx = PluginContext::new("r1".into(), "1.2.3.4".into(), "GET".into(), "/".into(), headers);
+        let mut ctx = PluginContext::new(
+            "r1".into(),
+            "1.2.3.4".into(),
+            "GET".into(),
+            "/".into(),
+            headers,
+        );
         assert!(matches!(instance.access(&mut ctx), PluginResult::Continue));
     }
 
@@ -345,7 +356,10 @@ mod tests {
         let Err(err) = JwtAuthPlugin.configure(&config) else {
             panic!("expected configure to fail");
         };
-        assert!(err.to_string().contains("secret"), "error should mention 'secret': {err}");
+        assert!(
+            err.to_string().contains("secret"),
+            "error should mention 'secret': {err}"
+        );
     }
 
     #[test]
@@ -361,13 +375,18 @@ mod tests {
         let inst = make_instance();
         // Build token with no sub field
         use std::time::{SystemTime, UNIX_EPOCH};
-        let exp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + 3600;
+        let exp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600;
         let claims = serde_json::json!({ "exp": exp, "role": "admin" });
         let token = encode(
             &Header::new(Algorithm::HS256),
             &claims,
             &EncodingKey::from_secret(SECRET.as_bytes()),
-        ).unwrap();
+        )
+        .unwrap();
         let mut ctx = make_ctx(Some(&format!("Bearer {token}")));
         let result = inst.access(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));
@@ -380,7 +399,10 @@ mod tests {
     fn token_with_nbf_in_future_is_rejected() {
         // jsonwebtoken validates nbf if present
         use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let claims = serde_json::json!({
             "sub": "alice",
             "exp": now + 7200,
@@ -390,7 +412,8 @@ mod tests {
             &Header::new(Algorithm::HS256),
             &claims,
             &EncodingKey::from_secret(SECRET.as_bytes()),
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
@@ -401,8 +424,10 @@ mod tests {
             header: "authorization".to_string(),
         };
         let result = inst.access(&mut make_ctx(Some(&format!("Bearer {token}"))));
-        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
-            "token with nbf in the future should be rejected");
+        assert!(
+            matches!(result, PluginResult::Response { status: 401, .. }),
+            "token with nbf in the future should be rejected"
+        );
     }
 
     // ── JWT edge cases: algorithm mismatch ────────────────────────
@@ -410,19 +435,25 @@ mod tests {
     #[test]
     fn token_signed_with_hs384_rejected_by_hs256_instance() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let claims = serde_json::json!({ "sub": "alice", "exp": now + 3600 });
         // Sign with HS384
         let token = encode(
             &Header::new(Algorithm::HS384),
             &claims,
             &EncodingKey::from_secret(SECRET.as_bytes()),
-        ).unwrap();
+        )
+        .unwrap();
         // Validate expecting HS256
         let inst = make_instance(); // HS256
         let result = inst.access(&mut make_ctx(Some(&format!("Bearer {token}"))));
-        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
-            "HS384 token must be rejected by HS256 validator");
+        assert!(
+            matches!(result, PluginResult::Response { status: 401, .. }),
+            "HS384 token must be rejected by HS256 validator"
+        );
     }
 
     // ── JWT edge cases: empty token string ────────────────────────
@@ -431,16 +462,20 @@ mod tests {
     fn empty_bearer_token_returns_401() {
         let inst = make_instance();
         let result = inst.access(&mut make_ctx(Some("Bearer ")));
-        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
-            "empty bearer token must be rejected");
+        assert!(
+            matches!(result, PluginResult::Response { status: 401, .. }),
+            "empty bearer token must be rejected"
+        );
     }
 
     #[test]
     fn empty_string_header_returns_401() {
         let inst = make_instance();
         let result = inst.access(&mut make_ctx(Some("")));
-        assert!(matches!(result, PluginResult::Response { status: 401, .. }),
-            "empty string header must be rejected");
+        assert!(
+            matches!(result, PluginResult::Response { status: 401, .. }),
+            "empty string header must be rejected"
+        );
     }
 
     // ── JWT: 401 response includes WWW-Authenticate header ───────
@@ -450,10 +485,15 @@ mod tests {
         let inst = make_instance();
         let result = inst.access(&mut make_ctx(None));
         match result {
-            PluginResult::Response { headers, status, .. } => {
+            PluginResult::Response {
+                headers, status, ..
+            } => {
                 assert_eq!(status, 401);
                 let www_auth = headers.iter().find(|(k, _)| k == "www-authenticate");
-                assert!(www_auth.is_some(), "401 must include www-authenticate header");
+                assert!(
+                    www_auth.is_some(),
+                    "401 must include www-authenticate header"
+                );
                 assert_eq!(www_auth.unwrap().1, "Bearer");
             }
             _ => panic!("Expected 401 Response"),
@@ -468,8 +508,10 @@ mod tests {
         let token = make_token("alice", 3600);
         let mut ctx = make_ctx(Some(&format!("Bearer   {token}  ")));
         let result = inst.access(&mut ctx);
-        assert!(matches!(result, PluginResult::Continue),
-            "token with surrounding whitespace should be accepted");
+        assert!(
+            matches!(result, PluginResult::Continue),
+            "token with surrounding whitespace should be accepted"
+        );
         assert_eq!(ctx.consumer.as_deref(), Some("alice"));
     }
 }

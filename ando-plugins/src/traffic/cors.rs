@@ -21,7 +21,13 @@ fn default_allow_origins() -> Vec<String> {
     vec!["*".to_string()]
 }
 fn default_allow_methods() -> Vec<String> {
-    vec!["GET".to_string(), "POST".to_string(), "PUT".to_string(), "DELETE".to_string(), "OPTIONS".to_string()]
+    vec![
+        "GET".to_string(),
+        "POST".to_string(),
+        "PUT".to_string(),
+        "DELETE".to_string(),
+        "OPTIONS".to_string(),
+    ]
 }
 fn default_allow_headers() -> Vec<String> {
     vec!["*".to_string()]
@@ -68,13 +74,28 @@ impl CorsInstance {
 
     fn cors_headers(&self, origin_value: &str) -> Vec<(String, String)> {
         let mut h = vec![
-            ("access-control-allow-origin".to_string(), origin_value.to_string()),
-            ("access-control-allow-methods".to_string(), self.cfg.allow_methods.join(", ")),
-            ("access-control-allow-headers".to_string(), self.cfg.allow_headers.join(", ")),
-            ("access-control-max-age".to_string(), self.cfg.max_age.to_string()),
+            (
+                "access-control-allow-origin".to_string(),
+                origin_value.to_string(),
+            ),
+            (
+                "access-control-allow-methods".to_string(),
+                self.cfg.allow_methods.join(", "),
+            ),
+            (
+                "access-control-allow-headers".to_string(),
+                self.cfg.allow_headers.join(", "),
+            ),
+            (
+                "access-control-max-age".to_string(),
+                self.cfg.max_age.to_string(),
+            ),
         ];
         if self.cfg.allow_credentials {
-            h.push(("access-control-allow-credentials".to_string(), "true".to_string()));
+            h.push((
+                "access-control-allow-credentials".to_string(),
+                "true".to_string(),
+            ));
         }
         h
     }
@@ -101,7 +122,9 @@ impl PluginInstance for CorsInstance {
                 return PluginResult::Response {
                     status: 403,
                     headers: vec![("content-type".to_string(), "application/json".to_string())],
-                    body: Some(br#"{"error":"Forbidden - origin not allowed","status":403}"#.to_vec()),
+                    body: Some(
+                        br#"{"error":"Forbidden - origin not allowed","status":403}"#.to_vec(),
+                    ),
                 };
             }
         };
@@ -119,7 +142,8 @@ impl PluginInstance for CorsInstance {
 
         // Add CORS headers to context variables for response phase (simple request)
         for (k, v) in self.cors_headers(&resolved) {
-            ctx.vars.insert(format!("_cors_{k}"), serde_json::Value::String(v));
+            ctx.vars
+                .insert(format!("_cors_{k}"), serde_json::Value::String(v));
         }
 
         PluginResult::Continue
@@ -136,7 +160,13 @@ mod tests {
         if let Some(o) = origin {
             headers.insert("origin".to_string(), o.to_string());
         }
-        PluginContext::new("r1".into(), "1.2.3.4".into(), method.into(), "/api".into(), headers)
+        PluginContext::new(
+            "r1".into(),
+            "1.2.3.4".into(),
+            method.into(),
+            "/api".into(),
+            headers,
+        )
     }
 
     fn instance(config: serde_json::Value) -> CorsInstance {
@@ -204,8 +234,16 @@ mod tests {
         let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
         match result {
             PluginResult::Response { headers, .. } => {
-                assert!(headers.iter().any(|(k, _)| k == "access-control-allow-methods"));
-                assert!(headers.iter().any(|(k, _)| k == "access-control-allow-headers"));
+                assert!(
+                    headers
+                        .iter()
+                        .any(|(k, _)| k == "access-control-allow-methods")
+                );
+                assert!(
+                    headers
+                        .iter()
+                        .any(|(k, _)| k == "access-control-allow-headers")
+                );
             }
             _ => panic!("Expected Response"),
         }
@@ -222,7 +260,9 @@ mod tests {
         let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
         match result {
             PluginResult::Response { headers, .. } => {
-                let cred = headers.iter().find(|(k, _)| k == "access-control-allow-credentials");
+                let cred = headers
+                    .iter()
+                    .find(|(k, _)| k == "access-control-allow-credentials");
                 assert!(cred.is_some());
                 assert_eq!(cred.unwrap().1, "true");
             }
@@ -253,7 +293,10 @@ mod tests {
     #[test]
     fn configure_empty_config_succeeds() {
         let result = CorsPlugin.configure(&serde_json::json!({}));
-        assert!(result.is_ok(), "Empty cors config should succeed (all defaults)");
+        assert!(
+            result.is_ok(),
+            "Empty cors config should succeed (all defaults)"
+        );
     }
 
     #[test]
@@ -313,8 +356,10 @@ mod tests {
             "allow_origins": ["https://good.com"]
         }));
         let result = inst.access(&mut make_ctx("OPTIONS", Some("https://evil.com")));
-        assert!(matches!(result, PluginResult::Response { status: 403, .. }),
-            "OPTIONS with disallowed origin must return 403, not 204");
+        assert!(
+            matches!(result, PluginResult::Response { status: 403, .. }),
+            "OPTIONS with disallowed origin must return 403, not 204"
+        );
     }
 
     // ── Simple request stores all CORS vars in context ────────────
@@ -335,7 +380,10 @@ mod tests {
         assert!(ctx.vars.contains_key("_cors_access-control-allow-methods"));
         assert!(ctx.vars.contains_key("_cors_access-control-allow-headers"));
         assert!(ctx.vars.contains_key("_cors_access-control-max-age"));
-        assert!(ctx.vars.contains_key("_cors_access-control-allow-credentials"));
+        assert!(
+            ctx.vars
+                .contains_key("_cors_access-control-allow-credentials")
+        );
     }
 
     // ── Wildcard origin: reflected as "*" not the actual origin ────
@@ -345,10 +393,15 @@ mod tests {
         let inst = instance(serde_json::json!({})); // defaults to allow_origins: ["*"]
         let mut ctx = make_ctx("GET", Some("https://specific-origin.com"));
         inst.access(&mut ctx);
-        let origin_val = ctx.vars.get("_cors_access-control-allow-origin")
+        let origin_val = ctx
+            .vars
+            .get("_cors_access-control-allow-origin")
             .and_then(|v| v.as_str());
-        assert_eq!(origin_val, Some("*"),
-            "wildcard config should reflect '*' not the actual origin");
+        assert_eq!(
+            origin_val,
+            Some("*"),
+            "wildcard config should reflect '*' not the actual origin"
+        );
     }
 
     // ── Specific origin: reflected as the matched origin ──────────
@@ -360,10 +413,15 @@ mod tests {
         }));
         let mut ctx = make_ctx("GET", Some("https://example.com"));
         inst.access(&mut ctx);
-        let origin_val = ctx.vars.get("_cors_access-control-allow-origin")
+        let origin_val = ctx
+            .vars
+            .get("_cors_access-control-allow-origin")
             .and_then(|v| v.as_str());
-        assert_eq!(origin_val, Some("https://example.com"),
-            "specific allow_origins should reflect the actual origin");
+        assert_eq!(
+            origin_val,
+            Some("https://example.com"),
+            "specific allow_origins should reflect the actual origin"
+        );
     }
 
     // ── Credentials not added when false ──────────────────────────
@@ -377,9 +435,13 @@ mod tests {
         let result = inst.access(&mut make_ctx("OPTIONS", Some("https://example.com")));
         match result {
             PluginResult::Response { headers, .. } => {
-                let cred = headers.iter().find(|(k, _)| k == "access-control-allow-credentials");
-                assert!(cred.is_none(),
-                    "allow-credentials header should not be sent when false");
+                let cred = headers
+                    .iter()
+                    .find(|(k, _)| k == "access-control-allow-credentials");
+                assert!(
+                    cred.is_none(),
+                    "allow-credentials header should not be sent when false"
+                );
             }
             _ => panic!("Expected Response"),
         }

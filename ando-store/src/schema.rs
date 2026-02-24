@@ -143,7 +143,10 @@ mod tests {
 
     #[test]
     fn consumer_key() {
-        assert_eq!(Schema::default().consumer_key("alice"), "/ando/consumers/alice");
+        assert_eq!(
+            Schema::default().consumer_key("alice"),
+            "/ando/consumers/alice"
+        );
     }
 
     // ── SSL ──────────────────────────────────────────────────────
@@ -162,12 +165,18 @@ mod tests {
 
     #[test]
     fn plugin_configs_prefix() {
-        assert_eq!(Schema::default().plugin_configs_prefix(), "/ando/plugin_configs/");
+        assert_eq!(
+            Schema::default().plugin_configs_prefix(),
+            "/ando/plugin_configs/"
+        );
     }
 
     #[test]
     fn plugin_config_key() {
-        assert_eq!(Schema::default().plugin_config_key("pc1"), "/ando/plugin_configs/pc1");
+        assert_eq!(
+            Schema::default().plugin_config_key("pc1"),
+            "/ando/plugin_configs/pc1"
+        );
     }
 
     // ── Key uniqueness ───────────────────────────────────────────
@@ -187,6 +196,10 @@ mod tests {
         // All keys must be unique
         let mut unique = keys.clone();
         unique.dedup();
-        assert_eq!(keys.len(), unique.len(), "All namespace keys must be unique");
+        assert_eq!(
+            keys.len(),
+            unique.len(),
+            "All namespace keys must be unique"
+        );
     }
 }

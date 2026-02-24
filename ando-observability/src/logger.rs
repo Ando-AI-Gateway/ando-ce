@@ -2,7 +2,7 @@ use ando_core::config::VictoriaLogsConfig;
 use chrono::Utc;
 use serde_json::json;
 use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 /// VictoriaLogs exporter — true no-op when disabled.
@@ -84,11 +84,7 @@ impl VictoriaLogsExporter {
         }
     }
 
-    async fn flush(
-        client: &reqwest::Client,
-        endpoint: &str,
-        batch: &mut Vec<serde_json::Value>,
-    ) {
+    async fn flush(client: &reqwest::Client, endpoint: &str, batch: &mut Vec<serde_json::Value>) {
         if batch.is_empty() {
             return;
         }
@@ -158,7 +154,15 @@ mod tests {
     fn access_log_on_disabled_does_not_panic() {
         let exporter = VictoriaLogsExporter::disabled();
         exporter.access_log("route-1", "GET", "/api", 200, 1.5, "127.0.0.1", None);
-        exporter.access_log("route-2", "POST", "/api/users", 201, 2.3, "10.0.0.1", Some("10.0.0.2:8080"));
+        exporter.access_log(
+            "route-2",
+            "POST",
+            "/api/users",
+            201,
+            2.3,
+            "10.0.0.1",
+            Some("10.0.0.2:8080"),
+        );
         exporter.access_log("route-3", "DELETE", "/item/1", 404, 0.1, "::1", None);
     }
 
@@ -173,7 +177,15 @@ mod tests {
         let exporter = VictoriaLogsExporter::new(enabled_config());
         // Should not block or panic — try_send returns immediately
         exporter.access_log("r1", "GET", "/health", 200, 0.5, "127.0.0.1", None);
-        exporter.access_log("r2", "POST", "/api", 404, 1.1, "10.0.0.1", Some("10.0.0.2:8080"));
+        exporter.access_log(
+            "r2",
+            "POST",
+            "/api",
+            404,
+            1.1,
+            "10.0.0.1",
+            Some("10.0.0.2:8080"),
+        );
         // Give channel consumer a moment
         tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
@@ -183,7 +195,15 @@ mod tests {
         let exporter = VictoriaLogsExporter::new(enabled_config());
         // Flood the channel (capacity 10_000) — should never panic via try_send
         for i in 0..10_100u32 {
-            exporter.access_log("r1", "GET", "/", 200, 0.1, &format!("10.0.0.{}", i % 255), None);
+            exporter.access_log(
+                "r1",
+                "GET",
+                "/",
+                200,
+                0.1,
+                &format!("10.0.0.{}", i % 255),
+                None,
+            );
         }
     }
 }

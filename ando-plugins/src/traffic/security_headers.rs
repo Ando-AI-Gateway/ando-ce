@@ -81,10 +81,18 @@ struct SecurityHeadersConfig {
     no_store_cache: bool,
 }
 
-fn default_hsts_max_age() -> u64 { 31_536_000 }
-fn default_true() -> bool { true }
-fn default_frame_options() -> String { "DENY".into() }
-fn default_referrer_policy() -> String { "no-referrer".into() }
+fn default_hsts_max_age() -> u64 {
+    31_536_000
+}
+fn default_true() -> bool {
+    true
+}
+fn default_frame_options() -> String {
+    "DENY".into()
+}
+fn default_referrer_policy() -> String {
+    "no-referrer".into()
+}
 fn default_permissions_policy() -> String {
     "geolocation=(), microphone=(), camera=()".into()
 }
@@ -97,13 +105,19 @@ fn default_permissions_policy() -> String {
 pub struct SecurityHeadersPlugin;
 
 impl Plugin for SecurityHeadersPlugin {
-    fn name(&self) -> &str { "security-headers" }
+    fn name(&self) -> &str {
+        "security-headers"
+    }
 
     /// Priority 3000: runs before most other header-filter plugins so that
     /// downstream plugins can override individual headers if necessary.
-    fn priority(&self) -> i32 { 3000 }
+    fn priority(&self) -> i32 {
+        3000
+    }
 
-    fn phases(&self) -> &[Phase] { &[Phase::HeaderFilter] }
+    fn phases(&self) -> &[Phase] {
+        &[Phase::HeaderFilter]
+    }
 
     fn configure(&self, config: &serde_json::Value) -> anyhow::Result<Box<dyn PluginInstance>> {
         let cfg: SecurityHeadersConfig = serde_json::from_value(config.clone())
@@ -125,8 +139,12 @@ struct SecurityHeadersInstance {
 }
 
 impl PluginInstance for SecurityHeadersInstance {
-    fn name(&self) -> &str { "security-headers" }
-    fn priority(&self) -> i32 { 3000 }
+    fn name(&self) -> &str {
+        "security-headers"
+    }
+    fn priority(&self) -> i32 {
+        3000
+    }
 
     fn header_filter(&self, ctx: &mut PluginContext) -> PluginResult {
         for (k, v) in &self.headers {
@@ -173,7 +191,10 @@ fn build_headers(cfg: &SecurityHeadersConfig) -> Vec<(String, String)> {
 
     // ── Content-Security-Policy ──────────────────────────────────
     if !cfg.content_security_policy.is_empty() {
-        h.push(("content-security-policy".into(), cfg.content_security_policy.clone()));
+        h.push((
+            "content-security-policy".into(),
+            cfg.content_security_policy.clone(),
+        ));
     }
 
     // ── Permissions-Policy ───────────────────────────────────────
@@ -226,7 +247,11 @@ mod tests {
             "hsts_preload": false
         }));
         let hdrs = build_headers(&cfg);
-        let val = &hdrs.iter().find(|(k, _)| k == "strict-transport-security").unwrap().1;
+        let val = &hdrs
+            .iter()
+            .find(|(k, _)| k == "strict-transport-security")
+            .unwrap()
+            .1;
         assert!(!val.contains("includeSubDomains"));
         assert!(!val.contains("preload"));
     }
@@ -235,7 +260,11 @@ mod tests {
     fn custom_hsts_max_age() {
         let cfg = cfg_with(serde_json::json!({ "hsts_max_age": 63072000 }));
         let hdrs = build_headers(&cfg);
-        let val = &hdrs.iter().find(|(k, _)| k == "strict-transport-security").unwrap().1;
+        let val = &hdrs
+            .iter()
+            .find(|(k, _)| k == "strict-transport-security")
+            .unwrap()
+            .1;
         assert!(val.contains("max-age=63072000"));
     }
 
@@ -302,7 +331,10 @@ mod tests {
             "content_security_policy": "default-src 'self'"
         }));
         let hdrs = build_headers(&cfg);
-        let csp = hdrs.iter().find(|(k, _)| k == "content-security-policy").unwrap();
+        let csp = hdrs
+            .iter()
+            .find(|(k, _)| k == "content-security-policy")
+            .unwrap();
         assert_eq!(csp.1, "default-src 'self'");
     }
 
@@ -354,7 +386,10 @@ mod tests {
         );
         let result = instance.header_filter(&mut ctx);
         assert!(matches!(result, PluginResult::Continue));
-        assert!(ctx.response_headers.contains_key("strict-transport-security"));
+        assert!(
+            ctx.response_headers
+                .contains_key("strict-transport-security")
+        );
         assert!(ctx.response_headers.contains_key("x-frame-options"));
         assert!(ctx.response_headers.contains_key("x-content-type-options"));
     }
@@ -369,7 +404,10 @@ mod tests {
     #[test]
     fn permissions_policy_defaults_disable_sensors() {
         let hdrs = build_headers(&default_cfg());
-        let pp = hdrs.iter().find(|(k, _)| k == "permissions-policy").unwrap();
+        let pp = hdrs
+            .iter()
+            .find(|(k, _)| k == "permissions-policy")
+            .unwrap();
         assert!(pp.1.contains("geolocation=()"));
         assert!(pp.1.contains("microphone=()"));
         assert!(pp.1.contains("camera=()"));

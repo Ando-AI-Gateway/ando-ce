@@ -1,4 +1,7 @@
-use figment::{Figment, providers::{Env, Format, Yaml}};
+use figment::{
+    Figment,
+    providers::{Env, Format, Yaml},
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -227,28 +230,72 @@ pub struct PiiScrubConfig {
 
 // ── Defaults ──────────────────────────────────────────────────
 
-fn default_http_addr() -> String { "0.0.0.0:9080".into() }
-fn default_https_addr() -> String { "0.0.0.0:9443".into() }
-fn default_admin_addr() -> String { "0.0.0.0:9180".into() }
-fn default_connect_timeout() -> u64 { 2000 }
-fn default_read_timeout() -> u64 { 5000 }
-fn default_write_timeout() -> u64 { 5000 }
-fn default_keepalive_pool() -> usize { 16 }
-fn default_true() -> bool { true }
-fn default_mode() -> DeploymentMode { DeploymentMode::Standalone }
-fn default_etcd_prefix() -> String { "/ando".into() }
-fn default_etcd_timeout() -> u64 { 30 }
-fn default_vm_endpoint() -> String { "http://localhost:8428/api/v1/import/prometheus".into() }
-fn default_vl_endpoint() -> String { "http://localhost:9428/insert/jsonline".into() }
-fn default_push_interval() -> u64 { 15 }
-fn default_batch_size() -> usize { 1000 }
-fn default_flush_interval() -> u64 { 5 }
-fn default_metrics_path() -> String { "/metrics".into() }
-fn default_tls_min_version() -> String { "TLSv1.2".into() }
-fn default_true_bool() -> bool { true }
-fn default_hsts_max_age() -> u64 { 31_536_000 }
-fn default_retention_days() -> u32 { 365 }
-fn default_audit_format() -> String { "json".into() }
+fn default_http_addr() -> String {
+    "0.0.0.0:9080".into()
+}
+fn default_https_addr() -> String {
+    "0.0.0.0:9443".into()
+}
+fn default_admin_addr() -> String {
+    "0.0.0.0:9180".into()
+}
+fn default_connect_timeout() -> u64 {
+    2000
+}
+fn default_read_timeout() -> u64 {
+    5000
+}
+fn default_write_timeout() -> u64 {
+    5000
+}
+fn default_keepalive_pool() -> usize {
+    16
+}
+fn default_true() -> bool {
+    true
+}
+fn default_mode() -> DeploymentMode {
+    DeploymentMode::Standalone
+}
+fn default_etcd_prefix() -> String {
+    "/ando".into()
+}
+fn default_etcd_timeout() -> u64 {
+    30
+}
+fn default_vm_endpoint() -> String {
+    "http://localhost:8428/api/v1/import/prometheus".into()
+}
+fn default_vl_endpoint() -> String {
+    "http://localhost:9428/insert/jsonline".into()
+}
+fn default_push_interval() -> u64 {
+    15
+}
+fn default_batch_size() -> usize {
+    1000
+}
+fn default_flush_interval() -> u64 {
+    5
+}
+fn default_metrics_path() -> String {
+    "/metrics".into()
+}
+fn default_tls_min_version() -> String {
+    "TLSv1.2".into()
+}
+fn default_true_bool() -> bool {
+    true
+}
+fn default_hsts_max_age() -> u64 {
+    31_536_000
+}
+fn default_retention_days() -> u32 {
+    365
+}
+fn default_audit_format() -> String {
+    "json".into()
+}
 
 // ── Impls ─────────────────────────────────────────────────────
 
@@ -460,7 +507,10 @@ mod tests {
     fn effective_workers_with_zero_returns_at_least_one() {
         let cfg = GatewayConfig::default(); // workers = 0
         let workers = cfg.effective_workers();
-        assert!(workers >= 1, "effective_workers must be at least 1, got {workers}");
+        assert!(
+            workers >= 1,
+            "effective_workers must be at least 1, got {workers}"
+        );
     }
 
     // ── DeploymentMode serde ──────────────────────────────────────
@@ -501,7 +551,11 @@ mod tests {
     #[test]
     fn load_from_valid_yaml_overrides_defaults() {
         let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
-        write!(tmpfile, "proxy:\n  http_addr: \"0.0.0.0:8888\"\n  workers: 2\n").unwrap();
+        write!(
+            tmpfile,
+            "proxy:\n  http_addr: \"0.0.0.0:8888\"\n  workers: 2\n"
+        )
+        .unwrap();
         let cfg = GatewayConfig::load(tmpfile.path()).unwrap();
         assert_eq!(cfg.proxy.http_addr, "0.0.0.0:8888");
         assert_eq!(cfg.proxy.workers, 2);
@@ -622,7 +676,10 @@ compliance:
 
     #[test]
     fn compliance_soc2_mode_defaults() {
-        let cfg = ComplianceConfig { soc2: true, ..Default::default() };
+        let cfg = ComplianceConfig {
+            soc2: true,
+            ..Default::default()
+        };
         assert_eq!(cfg.tls.min_version, "TLSv1.2");
         assert_eq!(cfg.log_retention_days, 365);
     }
@@ -635,7 +692,10 @@ compliance:
         let mut tmpfile = tempfile::NamedTempFile::new().unwrap();
         write!(tmpfile, "{yaml}").unwrap();
         let result = GatewayConfig::load(tmpfile.path());
-        assert!(result.is_err(), "YAML with wrong type for workers should error");
+        assert!(
+            result.is_err(),
+            "YAML with wrong type for workers should error"
+        );
     }
 
     #[test]

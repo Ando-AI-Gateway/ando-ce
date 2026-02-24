@@ -67,14 +67,30 @@ pub struct ActiveHealthCheck {
     pub unhealthy_failures: u32,
 }
 
-fn default_lb_type() -> String { "roundrobin".into() }
-fn default_pass_host() -> String { "pass".into() }
-fn default_retries() -> u32 { 1 }
-fn default_hc_type() -> String { "http".into() }
-fn default_hc_interval() -> u64 { 5 }
-fn default_hc_timeout() -> u64 { 3 }
-fn default_healthy_successes() -> u32 { 2 }
-fn default_unhealthy_failures() -> u32 { 3 }
+fn default_lb_type() -> String {
+    "roundrobin".into()
+}
+fn default_pass_host() -> String {
+    "pass".into()
+}
+fn default_retries() -> u32 {
+    1
+}
+fn default_hc_type() -> String {
+    "http".into()
+}
+fn default_hc_interval() -> u64 {
+    5
+}
+fn default_hc_timeout() -> u64 {
+    3
+}
+fn default_healthy_successes() -> u32 {
+    2
+}
+fn default_unhealthy_failures() -> u32 {
+    3
+}
 
 impl Upstream {
     /// Get the first node address (for single-node upstreams).

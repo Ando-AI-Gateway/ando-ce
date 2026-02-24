@@ -105,18 +105,29 @@ mod tests {
     #[test]
     fn test_rate_limited_body() {
         let err = AndoError::RateLimited;
-        let parsed: serde_json::Value =
-            serde_json::from_slice(&err.to_json_body()).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&err.to_json_body()).unwrap();
         assert_eq!(parsed["status"], 429);
     }
 
     #[test]
     fn test_display_messages() {
-        assert_eq!(AndoError::AuthFailed("invalid key".into()).to_string(), "Auth failed: invalid key");
-        assert_eq!(AndoError::RouteNotFound("route1".into()).to_string(), "Route not found: route1");
+        assert_eq!(
+            AndoError::AuthFailed("invalid key".into()).to_string(),
+            "Auth failed: invalid key"
+        );
+        assert_eq!(
+            AndoError::RouteNotFound("route1".into()).to_string(),
+            "Route not found: route1"
+        );
         assert_eq!(AndoError::RateLimited.to_string(), "Rate limited");
-        assert_eq!(AndoError::IpDenied("1.2.3.4".into()).to_string(), "IP denied: 1.2.3.4");
-        assert_eq!(AndoError::UpstreamNotFound("us1".into()).to_string(), "Upstream not found: us1");
+        assert_eq!(
+            AndoError::IpDenied("1.2.3.4".into()).to_string(),
+            "IP denied: 1.2.3.4"
+        );
+        assert_eq!(
+            AndoError::UpstreamNotFound("us1".into()).to_string(),
+            "Upstream not found: us1"
+        );
     }
 
     #[test]

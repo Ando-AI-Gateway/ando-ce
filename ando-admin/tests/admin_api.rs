@@ -3,12 +3,12 @@
 //! Uses `tower::ServiceExt::oneshot` to call handlers without binding a real
 //! TCP port — every test gets a fresh in-memory state.
 
-use ando_admin::server::{build_admin_router, AdminState};
+use ando_admin::server::{AdminState, build_admin_router};
 use ando_core::router::Router;
 use ando_plugin::registry::PluginRegistry;
 use ando_store::cache::ConfigCache;
 use arc_swap::ArcSwap;
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode};
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -77,7 +77,10 @@ async fn put_route_creates_and_returns_200() {
         "status": 1,
         "upstream": { "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }
     });
-    let resp = app.oneshot(json_put("/apisix/admin/routes/r1", body)).await.unwrap();
+    let resp = app
+        .oneshot(json_put("/apisix/admin/routes/r1", body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let j = body_json(resp).await;
     assert_eq!(j["id"], "r1");
@@ -88,10 +91,15 @@ async fn get_route_returns_route_after_put() {
     let state = make_state();
     let app1 = build_admin_router(Arc::clone(&state));
     let body = serde_json::json!({ "uri": "/hello", "status": 1 });
-    app1.oneshot(json_put("/apisix/admin/routes/r-hello", body)).await.unwrap();
+    app1.oneshot(json_put("/apisix/admin/routes/r-hello", body))
+        .await
+        .unwrap();
 
     let app2 = build_admin_router(Arc::clone(&state));
-    let resp = app2.oneshot(get_req("/apisix/admin/routes/r-hello")).await.unwrap();
+    let resp = app2
+        .oneshot(get_req("/apisix/admin/routes/r-hello"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let j = body_json(resp).await;
     assert_eq!(j["id"], "r-hello");
@@ -101,7 +109,10 @@ async fn get_route_returns_route_after_put() {
 #[tokio::test]
 async fn get_route_returns_404_when_missing() {
     let app = build_admin_router(make_state());
-    let resp = app.oneshot(get_req("/apisix/admin/routes/nonexistent")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/routes/nonexistent"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -115,7 +126,11 @@ async fn put_route_invalid_json_returns_4xx() {
         .body(Body::from(r#"not-valid-json"#))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert!(resp.status().is_client_error(), "expected a 4xx for malformed JSON, got {}", resp.status());
+    assert!(
+        resp.status().is_client_error(),
+        "expected a 4xx for malformed JSON, got {}",
+        resp.status()
+    );
 }
 
 #[tokio::test]
@@ -123,18 +138,27 @@ async fn delete_route_removes_it() {
     let state = make_state();
     // PUT route
     let app1 = build_admin_router(Arc::clone(&state));
-    app1.oneshot(json_put("/apisix/admin/routes/r-del",
-        serde_json::json!({ "uri": "/del", "status": 1 })
-    )).await.unwrap();
+    app1.oneshot(json_put(
+        "/apisix/admin/routes/r-del",
+        serde_json::json!({ "uri": "/del", "status": 1 }),
+    ))
+    .await
+    .unwrap();
 
     // DELETE route
     let app2 = build_admin_router(Arc::clone(&state));
-    let resp = app2.oneshot(delete_req("/apisix/admin/routes/r-del")).await.unwrap();
+    let resp = app2
+        .oneshot(delete_req("/apisix/admin/routes/r-del"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // GET should now 404
     let app3 = build_admin_router(Arc::clone(&state));
-    let resp = app3.oneshot(get_req("/apisix/admin/routes/r-del")).await.unwrap();
+    let resp = app3
+        .oneshot(get_req("/apisix/admin/routes/r-del"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -155,7 +179,9 @@ async fn list_routes_returns_all_inserted() {
         app.oneshot(json_put(
             &format!("/apisix/admin/routes/{id}"),
             serde_json::json!({ "uri": format!("/{id}"), "status": 1 }),
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
     }
     let app = build_admin_router(Arc::clone(&state));
     let resp = app.oneshot(get_req("/apisix/admin/routes")).await.unwrap();
@@ -172,14 +198,20 @@ async fn put_upstream_creates_and_returns_200() {
         "nodes": { "127.0.0.1:8080": 1 },
         "type": "roundrobin"
     });
-    let resp = app.oneshot(json_put("/apisix/admin/upstreams/u1", body)).await.unwrap();
+    let resp = app
+        .oneshot(json_put("/apisix/admin/upstreams/u1", body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn get_upstream_returns_404_when_missing() {
     let app = build_admin_router(make_state());
-    let resp = app.oneshot(get_req("/apisix/admin/upstreams/no-such")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/upstreams/no-such"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -187,16 +219,25 @@ async fn get_upstream_returns_404_when_missing() {
 async fn delete_upstream_removes_it() {
     let state = make_state();
     let app1 = build_admin_router(Arc::clone(&state));
-    app1.oneshot(json_put("/apisix/admin/upstreams/u1",
-        serde_json::json!({ "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" })
-    )).await.unwrap();
+    app1.oneshot(json_put(
+        "/apisix/admin/upstreams/u1",
+        serde_json::json!({ "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }),
+    ))
+    .await
+    .unwrap();
 
     let app2 = build_admin_router(Arc::clone(&state));
-    let resp = app2.oneshot(delete_req("/apisix/admin/upstreams/u1")).await.unwrap();
+    let resp = app2
+        .oneshot(delete_req("/apisix/admin/upstreams/u1"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     let app3 = build_admin_router(Arc::clone(&state));
-    let resp = app3.oneshot(get_req("/apisix/admin/upstreams/u1")).await.unwrap();
+    let resp = app3
+        .oneshot(get_req("/apisix/admin/upstreams/u1"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -208,10 +249,15 @@ async fn list_upstreams_total_reflects_inserts() {
         app.oneshot(json_put(
             &format!("/apisix/admin/upstreams/{id}"),
             serde_json::json!({ "nodes": { "127.0.0.1:8080": 1 }, "type": "roundrobin" }),
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
     }
     let app = build_admin_router(Arc::clone(&state));
-    let resp = app.oneshot(get_req("/apisix/admin/upstreams")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/upstreams"))
+        .await
+        .unwrap();
     let j = body_json(resp).await;
     assert_eq!(j["total"], 2);
 }
@@ -224,7 +270,10 @@ async fn put_consumer_creates_and_returns_200() {
     let body = serde_json::json!({
         "plugins": { "key-auth": { "key": "my-secret-key" } }
     });
-    let resp = app.oneshot(json_put("/apisix/admin/consumers/alice", body)).await.unwrap();
+    let resp = app
+        .oneshot(json_put("/apisix/admin/consumers/alice", body))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let j = body_json(resp).await;
     assert_eq!(j["username"], "alice");
@@ -233,7 +282,10 @@ async fn put_consumer_creates_and_returns_200() {
 #[tokio::test]
 async fn get_consumer_returns_404_when_missing() {
     let app = build_admin_router(make_state());
-    let resp = app.oneshot(get_req("/apisix/admin/consumers/nobody")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/consumers/nobody"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -241,24 +293,35 @@ async fn get_consumer_returns_404_when_missing() {
 async fn put_consumer_updates_key_index() {
     let state = make_state();
     let app = build_admin_router(Arc::clone(&state));
-    app.oneshot(json_put("/apisix/admin/consumers/bob",
-        serde_json::json!({ "plugins": { "key-auth": { "key": "bob-key" } } })
-    )).await.unwrap();
+    app.oneshot(json_put(
+        "/apisix/admin/consumers/bob",
+        serde_json::json!({ "plugins": { "key-auth": { "key": "bob-key" } } }),
+    ))
+    .await
+    .unwrap();
 
     // Consumer key index must be populated immediately
-    assert_eq!(state.cache.find_consumer_by_key("bob-key"), Some("bob".to_string()));
+    assert_eq!(
+        state.cache.find_consumer_by_key("bob-key"),
+        Some("bob".to_string())
+    );
 }
 
 #[tokio::test]
 async fn delete_consumer_removes_from_key_index() {
     let state = make_state();
     let app1 = build_admin_router(Arc::clone(&state));
-    app1.oneshot(json_put("/apisix/admin/consumers/carol",
-        serde_json::json!({ "plugins": { "key-auth": { "key": "carol-key" } } })
-    )).await.unwrap();
+    app1.oneshot(json_put(
+        "/apisix/admin/consumers/carol",
+        serde_json::json!({ "plugins": { "key-auth": { "key": "carol-key" } } }),
+    ))
+    .await
+    .unwrap();
 
     let app2 = build_admin_router(Arc::clone(&state));
-    app2.oneshot(delete_req("/apisix/admin/consumers/carol")).await.unwrap();
+    app2.oneshot(delete_req("/apisix/admin/consumers/carol"))
+        .await
+        .unwrap();
 
     assert!(state.cache.find_consumer_by_key("carol-key").is_none());
 }
@@ -271,10 +334,15 @@ async fn list_consumers_total_reflects_inserts() {
         app.oneshot(json_put(
             &format!("/apisix/admin/consumers/{name}"),
             serde_json::json!({}),
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
     }
     let app = build_admin_router(Arc::clone(&state));
-    let resp = app.oneshot(get_req("/apisix/admin/consumers")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/consumers"))
+        .await
+        .unwrap();
     let j = body_json(resp).await;
     assert_eq!(j["total"], 2);
 }
@@ -284,6 +352,9 @@ async fn list_consumers_total_reflects_inserts() {
 #[tokio::test]
 async fn plugins_list_returns_ok() {
     let app = build_admin_router(make_state());
-    let resp = app.oneshot(get_req("/apisix/admin/plugins/list")).await.unwrap();
+    let resp = app
+        .oneshot(get_req("/apisix/admin/plugins/list"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }

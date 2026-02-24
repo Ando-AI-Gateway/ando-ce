@@ -4,7 +4,7 @@ use ando_core::consumer::Consumer;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub async fn put_consumer(
@@ -17,7 +17,10 @@ pub async fn put_consumer(
     let consumer: Consumer = match serde_json::from_value(body) {
         Ok(c) => c,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()})));
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": e.to_string()})),
+            );
         }
     };
 
@@ -57,9 +60,7 @@ pub async fn delete_consumer(
     (StatusCode::OK, Json(json!({"deleted": true})))
 }
 
-pub async fn list_consumers(
-    State(state): State<Arc<AdminState>>,
-) -> Json<Value> {
+pub async fn list_consumers(State(state): State<Arc<AdminState>>) -> Json<Value> {
     let consumers: Vec<Consumer> = state
         .cache
         .consumers

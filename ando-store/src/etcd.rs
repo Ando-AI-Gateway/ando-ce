@@ -35,7 +35,10 @@ impl EtcdStore {
         let prefix = self.schema.routes_prefix();
         let resp = self
             .client
-            .get(prefix.as_bytes(), Some(etcd_client::GetOptions::new().with_prefix()))
+            .get(
+                prefix.as_bytes(),
+                Some(etcd_client::GetOptions::new().with_prefix()),
+            )
             .await?;
         for kv in resp.kvs() {
             if let Ok(route) = serde_json::from_slice::<ando_core::route::Route>(kv.value()) {
@@ -49,7 +52,10 @@ impl EtcdStore {
         let prefix = self.schema.services_prefix();
         let resp = self
             .client
-            .get(prefix.as_bytes(), Some(etcd_client::GetOptions::new().with_prefix()))
+            .get(
+                prefix.as_bytes(),
+                Some(etcd_client::GetOptions::new().with_prefix()),
+            )
             .await?;
         for kv in resp.kvs() {
             if let Ok(svc) = serde_json::from_slice::<ando_core::service::Service>(kv.value()) {
@@ -63,7 +69,10 @@ impl EtcdStore {
         let prefix = self.schema.upstreams_prefix();
         let resp = self
             .client
-            .get(prefix.as_bytes(), Some(etcd_client::GetOptions::new().with_prefix()))
+            .get(
+                prefix.as_bytes(),
+                Some(etcd_client::GetOptions::new().with_prefix()),
+            )
             .await?;
         for kv in resp.kvs() {
             if let Ok(ups) = serde_json::from_slice::<ando_core::upstream::Upstream>(kv.value())
@@ -79,15 +88,16 @@ impl EtcdStore {
         let prefix = self.schema.consumers_prefix();
         let resp = self
             .client
-            .get(prefix.as_bytes(), Some(etcd_client::GetOptions::new().with_prefix()))
+            .get(
+                prefix.as_bytes(),
+                Some(etcd_client::GetOptions::new().with_prefix()),
+            )
             .await?;
         for kv in resp.kvs() {
             if let Ok(consumer) =
                 serde_json::from_slice::<ando_core::consumer::Consumer>(kv.value())
             {
-                cache
-                    .consumers
-                    .insert(consumer.username.clone(), consumer);
+                cache.consumers.insert(consumer.username.clone(), consumer);
             }
         }
         Ok(())
@@ -308,9 +318,7 @@ mod tests {
             "id": "ups1", "nodes": {}
         }))
         .unwrap();
-        cache
-            .upstreams
-            .insert(ups.id.clone().unwrap(), ups);
+        cache.upstreams.insert(ups.id.clone().unwrap(), ups);
 
         let consumer = Consumer {
             username: "alice".into(),
@@ -322,18 +330,13 @@ mod tests {
             desc: None,
             labels: HashMap::new(),
         };
-        cache
-            .consumers
-            .insert(consumer.username.clone(), consumer);
+        cache.consumers.insert(consumer.username.clone(), consumer);
         cache.rebuild_consumer_key_index();
 
         assert_eq!(cache.routes.len(), 1);
         assert_eq!(cache.services.len(), 1);
         assert_eq!(cache.upstreams.len(), 1);
         assert_eq!(cache.consumers.len(), 1);
-        assert_eq!(
-            cache.find_consumer_by_key("k1"),
-            Some("alice".to_string())
-        );
+        assert_eq!(cache.find_consumer_by_key("k1"), Some("alice".to_string()));
     }
 }

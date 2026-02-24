@@ -37,7 +37,10 @@ mod tests {
             plugins: {
                 let mut m = HashMap::new();
                 m.insert("key-auth".into(), serde_json::json!({}));
-                m.insert("rate-limiting".into(), serde_json::json!({"count": 50, "time_window": 60}));
+                m.insert(
+                    "rate-limiting".into(),
+                    serde_json::json!({"count": 50, "time_window": 60}),
+                );
                 m
             },
             labels: HashMap::new(),

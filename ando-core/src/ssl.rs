@@ -20,7 +20,9 @@ pub struct SslCertificate {
     pub status: u8,
 }
 
-fn default_status() -> u8 { 1 }
+fn default_status() -> u8 {
+    1
+}
 
 #[cfg(test)]
 mod tests {

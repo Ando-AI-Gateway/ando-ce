@@ -13,14 +13,14 @@
 //! 8. Multiple routes dispatch to the correct route ID.
 
 use ando_core::config::GatewayConfig;
-use ando_core::router::Router;
-use ando_core::route::Route;
-use ando_core::upstream::Upstream;
 use ando_core::consumer::Consumer;
+use ando_core::route::Route;
+use ando_core::router::Router;
+use ando_core::upstream::Upstream;
 use ando_plugin::registry::PluginRegistry;
 use ando_plugins::register_all;
-use ando_store::cache::ConfigCache;
 use ando_proxy::worker::SharedState;
+use ando_store::cache::ConfigCache;
 use arc_swap::ArcSwap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -111,9 +111,10 @@ fn upstream_in_cache_is_retrievable() {
 #[test]
 fn consumer_key_lookup_after_index_rebuild() {
     let cache = ConfigCache::new();
-    cache
-        .consumers
-        .insert("alice".into(), make_consumer_entry("alice", "secret-key-123"));
+    cache.consumers.insert(
+        "alice".into(),
+        make_consumer_entry("alice", "secret-key-123"),
+    );
     cache.rebuild_consumer_key_index();
 
     let username = cache.find_consumer_by_key("secret-key-123");
@@ -245,4 +246,3 @@ fn method_specific_route_only_matches_correct_method() {
     assert!(router.match_route("POST", "/resource", None).is_none());
     assert!(router.match_route("DELETE", "/resource", None).is_none());
 }
-

@@ -36,8 +36,8 @@ impl Plugin for IpRestrictionPlugin {
     }
 
     fn configure(&self, config: &serde_json::Value) -> anyhow::Result<Box<dyn PluginInstance>> {
-        let cfg: IpRestrictionConfig = serde_json::from_value(config.clone())
-            .unwrap_or_else(|_| IpRestrictionConfig {
+        let cfg: IpRestrictionConfig =
+            serde_json::from_value(config.clone()).unwrap_or_else(|_| IpRestrictionConfig {
                 allowlist: vec![],
                 denylist: vec![],
             });
@@ -115,7 +115,13 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_ctx(client_ip: &str) -> PluginContext {
-        PluginContext::new("r1".into(), client_ip.into(), "GET".into(), "/".into(), HashMap::new())
+        PluginContext::new(
+            "r1".into(),
+            client_ip.into(),
+            "GET".into(),
+            "/".into(),
+            HashMap::new(),
+        )
     }
 
     fn instance_from(config: serde_json::Value) -> IpRestrictionInstance {
@@ -125,12 +131,14 @@ mod tests {
         let cfg: IpRestrictionConfig = serde_json::from_value(config).unwrap_or_default();
         let parse_list = |list: Vec<String>| -> Vec<IpNet> {
             list.iter()
-                .filter_map(|s| IpNet::from_str(s).ok().or_else(|| {
-                    IpAddr::from_str(s).ok().map(|ip| match ip {
-                        IpAddr::V4(a) => IpNet::from(ipnet::Ipv4Net::from(a)),
-                        IpAddr::V6(a) => IpNet::from(ipnet::Ipv6Net::from(a)),
+                .filter_map(|s| {
+                    IpNet::from_str(s).ok().or_else(|| {
+                        IpAddr::from_str(s).ok().map(|ip| match ip {
+                            IpAddr::V4(a) => IpNet::from(ipnet::Ipv4Net::from(a)),
+                            IpAddr::V6(a) => IpNet::from(ipnet::Ipv6Net::from(a)),
+                        })
                     })
-                }))
+                })
                 .collect()
         };
         let _ = inst; // drop boxed instance
@@ -155,14 +163,20 @@ mod tests {
     fn denylist_blocks_direct_ip_match() {
         let inst = instance_from(serde_json::json!({ "denylist": ["10.0.0.1"] }));
         let mut ctx = make_ctx("10.0.0.1");
-        assert!(matches!(inst.access(&mut ctx), PluginResult::Response { status: 403, .. }));
+        assert!(matches!(
+            inst.access(&mut ctx),
+            PluginResult::Response { status: 403, .. }
+        ));
     }
 
     #[test]
     fn denylist_blocks_cidr_match() {
         let inst = instance_from(serde_json::json!({ "denylist": ["10.0.0.0/8"] }));
         let mut ctx = make_ctx("10.0.0.50");
-        assert!(matches!(inst.access(&mut ctx), PluginResult::Response { status: 403, .. }));
+        assert!(matches!(
+            inst.access(&mut ctx),
+            PluginResult::Response { status: 403, .. }
+        ));
     }
 
     #[test]
@@ -185,7 +199,10 @@ mod tests {
     fn allowlist_blocks_non_matching_ip() {
         let inst = instance_from(serde_json::json!({ "allowlist": ["192.168.0.0/24"] }));
         let mut ctx = make_ctx("10.0.0.1");
-        assert!(matches!(inst.access(&mut ctx), PluginResult::Response { status: 403, .. }));
+        assert!(matches!(
+            inst.access(&mut ctx),
+            PluginResult::Response { status: 403, .. }
+        ));
     }
 
     // ── Denylist takes priority over allowlist ─────────────────────
@@ -197,7 +214,10 @@ mod tests {
             "denylist": ["192.168.1.5"]
         }));
         let mut ctx = make_ctx("192.168.1.5");
-        assert!(matches!(inst.access(&mut ctx), PluginResult::Response { status: 403, .. }));
+        assert!(matches!(
+            inst.access(&mut ctx),
+            PluginResult::Response { status: 403, .. }
+        ));
     }
 
     // ── Multiple CIDRs ────────────────────────────────────────────
@@ -207,10 +227,16 @@ mod tests {
         let inst = instance_from(serde_json::json!({
             "denylist": ["10.0.0.0/8", "172.16.0.0/12"]
         }));
-        assert!(matches!(instance_from(serde_json::json!({ "denylist": ["10.0.0.0/8"] }))
-            .access(&mut make_ctx("10.5.5.5")), PluginResult::Response { status: 403, .. }));
-        assert!(matches!(instance_from(serde_json::json!({ "denylist": ["172.16.0.0/12"] }))
-            .access(&mut make_ctx("172.16.5.5")), PluginResult::Response { status: 403, .. }));
+        assert!(matches!(
+            instance_from(serde_json::json!({ "denylist": ["10.0.0.0/8"] }))
+                .access(&mut make_ctx("10.5.5.5")),
+            PluginResult::Response { status: 403, .. }
+        ));
+        assert!(matches!(
+            instance_from(serde_json::json!({ "denylist": ["172.16.0.0/12"] }))
+                .access(&mut make_ctx("172.16.5.5")),
+            PluginResult::Response { status: 403, .. }
+        ));
         let _ = inst;
     }
 

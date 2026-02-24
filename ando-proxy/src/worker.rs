@@ -120,9 +120,9 @@ async fn worker_loop(worker_id: usize, shared: Arc<SharedState>, addr: String) {
                 let pool = Rc::clone(&conn_pool);
 
                 monoio::spawn(async move {
-                    if let Err(e) = crate::connection::handle_connection(
-                        stream, peer_addr, proxy, pool,
-                    ).await {
+                    if let Err(e) =
+                        crate::connection::handle_connection(stream, peer_addr, proxy, pool).await
+                    {
                         tracing::debug!(error = %e, "Connection closed");
                     }
                 });

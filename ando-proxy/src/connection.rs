@@ -1,5 +1,5 @@
 use crate::proxy::{
-    build_response, build_upstream_request, ConnPool, ProxyWorker, RequestResult, RESP_502,
+    ConnPool, ProxyWorker, RESP_502, RequestResult, build_response, build_upstream_request,
 };
 use monoio::io::{AsyncReadRent, AsyncWriteRentExt};
 use monoio::net::TcpStream;
@@ -113,7 +113,9 @@ pub async fn handle_connection(
                 let mut keep_alive = true;
 
                 for h in req.headers.iter() {
-                    if h.name.is_empty() { break; }
+                    if h.name.is_empty() {
+                        break;
+                    }
                     let val = std::str::from_utf8(h.value).unwrap_or("");
                     headers.push((h.name, val));
                     if h.name.eq_ignore_ascii_case("host") {
@@ -131,12 +133,18 @@ pub async fn handle_connection(
                 // Borrow dropped here — safe to do async I/O
 
                 match result {
-                    RequestResult::Proxy { ref upstream_addr, ref upstream_path } => {
+                    RequestResult::Proxy {
+                        ref upstream_addr,
+                        ref upstream_path,
+                    } => {
                         // Build upstream request while header refs are valid
                         let body_data = &read_buf[body_offset..n];
                         build_upstream_request(
                             &mut upstream_req_buf,
-                            method, upstream_path, &headers, body_data,
+                            method,
+                            upstream_path,
+                            &headers,
+                            body_data,
                         );
 
                         // Get or open upstream connection
@@ -148,7 +156,9 @@ pub async fn handle_connection(
                                 None => {
                                     let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                     res?;
-                                    if !keep_alive { return Ok(()); }
+                                    if !keep_alive {
+                                        return Ok(());
+                                    }
                                     continue;
                                 }
                             },
@@ -167,7 +177,9 @@ pub async fn handle_connection(
                                         tracing::warn!(addr = %upstream_addr, "Upstream write failed after reconnect");
                                         let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                         res?;
-                                        if !keep_alive { return Ok(()); }
+                                        if !keep_alive {
+                                            return Ok(());
+                                        }
                                         continue;
                                     }
                                     upstream = new_upstream;
@@ -175,7 +187,9 @@ pub async fn handle_connection(
                                 None => {
                                     let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                     res?;
-                                    if !keep_alive { return Ok(()); }
+                                    if !keep_alive {
+                                        return Ok(());
+                                    }
                                     continue;
                                 }
                             }
@@ -189,7 +203,9 @@ pub async fn handle_connection(
                                 tracing::warn!(addr = %upstream_addr, "Upstream closed connection without response");
                                 let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                 res?;
-                                if !keep_alive { return Ok(()); }
+                                if !keep_alive {
+                                    return Ok(());
+                                }
                                 continue;
                             }
                             Ok(n) => n,
@@ -197,7 +213,9 @@ pub async fn handle_connection(
                                 tracing::warn!(addr = %upstream_addr, error = %e, "Upstream read error");
                                 let (res, _) = client.write_all(RESP_502.to_vec()).await;
                                 res?;
-                                if !keep_alive { return Ok(()); }
+                                if !keep_alive {
+                                    return Ok(());
+                                }
                                 continue;
                             }
                         };
@@ -208,9 +226,13 @@ pub async fn handle_connection(
                         let mut content_length: Option<usize> = None;
                         let mut upstream_keepalive = true;
 
-                        if let Ok(httparse::Status::Complete(hdr_len)) = resp.parse(&upstream_buf[..resp_n]) {
+                        if let Ok(httparse::Status::Complete(hdr_len)) =
+                            resp.parse(&upstream_buf[..resp_n])
+                        {
                             for h in resp.headers.iter() {
-                                if h.name.is_empty() { break; }
+                                if h.name.is_empty() {
+                                    break;
+                                }
                                 if h.name.eq_ignore_ascii_case("content-length") {
                                     content_length = std::str::from_utf8(h.value)
                                         .ok()
@@ -245,7 +267,9 @@ pub async fn handle_connection(
                                     remaining -= cn;
                                     let data = chunk_buf[..cn].to_vec();
                                     let (res, _) = client.write_all(data).await;
-                                    if res.is_err() { return Ok(()); }
+                                    if res.is_err() {
+                                        return Ok(());
+                                    }
                                 }
                             }
                         } else {
@@ -258,10 +282,7 @@ pub async fn handle_connection(
 
                         // Return upstream connection to pool if keepalive
                         if upstream_keepalive {
-                            conn_pool.borrow_mut().put(
-                                upstream_addr.clone(),
-                                upstream,
-                            );
+                            conn_pool.borrow_mut().put(upstream_addr.clone(), upstream);
                         }
                     }
 
@@ -270,7 +291,11 @@ pub async fn handle_connection(
                         res?;
                     }
 
-                    RequestResult::PluginResponse { status, ref headers, ref body } => {
+                    RequestResult::PluginResponse {
+                        status,
+                        ref headers,
+                        ref body,
+                    } => {
                         build_response(&mut resp_buf, status, headers, body);
                         let data = resp_buf.clone();
                         let (res, _) = client.write_all(data).await;
@@ -283,14 +308,16 @@ pub async fn handle_connection(
                 }
             }
             Ok(httparse::Status::Partial) => {
-                let resp = b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                let resp =
+                    b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
                 let (res, _) = client.write_all(resp.to_vec()).await;
                 res?;
                 return Ok(());
             }
             Err(e) => {
                 tracing::debug!(error = %e, "HTTP parse error");
-                let resp = b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                let resp =
+                    b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
                 let (res, _) = client.write_all(resp.to_vec()).await;
                 res?;
                 return Ok(());

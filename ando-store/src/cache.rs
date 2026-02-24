@@ -96,9 +96,14 @@ mod tests {
     #[test]
     fn find_consumer_by_key_returns_username() {
         let cache = ConfigCache::new();
-        cache.consumers.insert("alice".to_string(), make_consumer("alice", "secret-abc"));
+        cache
+            .consumers
+            .insert("alice".to_string(), make_consumer("alice", "secret-abc"));
         cache.rebuild_consumer_key_index();
-        assert_eq!(cache.find_consumer_by_key("secret-abc"), Some("alice".to_string()));
+        assert_eq!(
+            cache.find_consumer_by_key("secret-abc"),
+            Some("alice".to_string())
+        );
     }
 
     #[test]
@@ -111,7 +116,9 @@ mod tests {
     #[test]
     fn find_consumer_by_key_before_rebuild_returns_none() {
         let cache = ConfigCache::new();
-        cache.consumers.insert("bob".to_string(), make_consumer("bob", "bob-key"));
+        cache
+            .consumers
+            .insert("bob".to_string(), make_consumer("bob", "bob-key"));
         // Index not rebuilt yet — lookup must return None
         assert!(cache.find_consumer_by_key("bob-key").is_none());
     }
@@ -119,28 +126,50 @@ mod tests {
     #[test]
     fn rebuild_consumer_key_index_replaces_stale_entries() {
         let cache = ConfigCache::new();
-        cache.consumers.insert("alice".to_string(), make_consumer("alice", "old-key"));
+        cache
+            .consumers
+            .insert("alice".to_string(), make_consumer("alice", "old-key"));
         cache.rebuild_consumer_key_index();
 
         cache.consumers.remove("alice");
-        cache.consumers.insert("alice".to_string(), make_consumer("alice", "new-key"));
+        cache
+            .consumers
+            .insert("alice".to_string(), make_consumer("alice", "new-key"));
         cache.rebuild_consumer_key_index();
 
-        assert!(cache.find_consumer_by_key("old-key").is_none(), "stale key must be removed");
-        assert_eq!(cache.find_consumer_by_key("new-key"), Some("alice".to_string()));
+        assert!(
+            cache.find_consumer_by_key("old-key").is_none(),
+            "stale key must be removed"
+        );
+        assert_eq!(
+            cache.find_consumer_by_key("new-key"),
+            Some("alice".to_string())
+        );
     }
 
     #[test]
     fn rebuild_consumer_key_index_multiple_consumers() {
         let cache = ConfigCache::new();
-        cache.consumers.insert("alice".to_string(), make_consumer("alice", "key-a"));
-        cache.consumers.insert("bob".to_string(), make_consumer("bob", "key-b"));
-        cache.consumers.insert("carol".to_string(), make_consumer("carol", "key-c"));
+        cache
+            .consumers
+            .insert("alice".to_string(), make_consumer("alice", "key-a"));
+        cache
+            .consumers
+            .insert("bob".to_string(), make_consumer("bob", "key-b"));
+        cache
+            .consumers
+            .insert("carol".to_string(), make_consumer("carol", "key-c"));
         cache.rebuild_consumer_key_index();
 
-        assert_eq!(cache.find_consumer_by_key("key-a"), Some("alice".to_string()));
+        assert_eq!(
+            cache.find_consumer_by_key("key-a"),
+            Some("alice".to_string())
+        );
         assert_eq!(cache.find_consumer_by_key("key-b"), Some("bob".to_string()));
-        assert_eq!(cache.find_consumer_by_key("key-c"), Some("carol".to_string()));
+        assert_eq!(
+            cache.find_consumer_by_key("key-c"),
+            Some("carol".to_string())
+        );
     }
 
     #[test]
@@ -168,17 +197,27 @@ mod tests {
     #[test]
     fn all_routes_returns_all_inserted() {
         let cache = ConfigCache::new();
-        cache.routes.insert("r1".to_string(), make_route("r1", "/a"));
-        cache.routes.insert("r2".to_string(), make_route("r2", "/b"));
-        cache.routes.insert("r3".to_string(), make_route("r3", "/c"));
+        cache
+            .routes
+            .insert("r1".to_string(), make_route("r1", "/a"));
+        cache
+            .routes
+            .insert("r2".to_string(), make_route("r2", "/b"));
+        cache
+            .routes
+            .insert("r3".to_string(), make_route("r3", "/c"));
         assert_eq!(cache.all_routes().len(), 3);
     }
 
     #[test]
     fn all_routes_reflects_removal() {
         let cache = ConfigCache::new();
-        cache.routes.insert("r1".to_string(), make_route("r1", "/a"));
-        cache.routes.insert("r2".to_string(), make_route("r2", "/b"));
+        cache
+            .routes
+            .insert("r1".to_string(), make_route("r1", "/a"));
+        cache
+            .routes
+            .insert("r2".to_string(), make_route("r2", "/b"));
         cache.routes.remove("r1");
         let routes = cache.all_routes();
         assert_eq!(routes.len(), 1);
@@ -191,7 +230,9 @@ mod tests {
     fn clone_shares_dashmap_state() {
         let cache = ConfigCache::new();
         let clone = cache.clone();
-        cache.routes.insert("rx".to_string(), make_route("rx", "/shared"));
+        cache
+            .routes
+            .insert("rx".to_string(), make_route("rx", "/shared"));
         // clone holds Arc to same DashMap
         assert_eq!(clone.routes.len(), 1);
     }

@@ -4,7 +4,7 @@ use ando_core::upstream::Upstream;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub async fn put_upstream(
@@ -17,7 +17,10 @@ pub async fn put_upstream(
     let upstream: Upstream = match serde_json::from_value(body) {
         Ok(u) => u,
         Err(e) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()})));
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": e.to_string()})),
+            );
         }
     };
 
@@ -25,7 +28,10 @@ pub async fn put_upstream(
     state.cache.upstreams.insert(uid.clone(), upstream);
     persist::save_state(&state);
 
-    (StatusCode::OK, Json(json!({"id": uid, "status": "created"})))
+    (
+        StatusCode::OK,
+        Json(json!({"id": uid, "status": "created"})),
+    )
 }
 
 pub async fn get_upstream(
@@ -34,7 +40,10 @@ pub async fn get_upstream(
 ) -> (StatusCode, Json<Value>) {
     match state.cache.upstreams.get(&id) {
         Some(u) => (StatusCode::OK, Json(json!(u.value().clone()))),
-        None => (StatusCode::NOT_FOUND, Json(json!({"error": "Upstream not found"}))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Upstream not found"})),
+        ),
     }
 }
 
@@ -47,9 +56,7 @@ pub async fn delete_upstream(
     (StatusCode::OK, Json(json!({"deleted": true})))
 }
 
-pub async fn list_upstreams(
-    State(state): State<Arc<AdminState>>,
-) -> Json<Value> {
+pub async fn list_upstreams(State(state): State<Arc<AdminState>>) -> Json<Value> {
     let upstreams: Vec<Upstream> = state
         .cache
         .upstreams

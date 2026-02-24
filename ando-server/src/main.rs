@@ -16,8 +16,8 @@ use ando_proxy::worker::{self, SharedState};
 use ando_store::cache::ConfigCache;
 use clap::Parser;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Notify;
 use tracing::info;
 
@@ -164,7 +164,10 @@ fn main() -> anyhow::Result<()> {
 #[cfg(unix)]
 fn raise_fd_limit() {
     unsafe {
-        let mut rl = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        let mut rl = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
         if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rl) != 0 {
             tracing::warn!("getrlimit(RLIMIT_NOFILE) failed — fd limit unchanged");
             return;

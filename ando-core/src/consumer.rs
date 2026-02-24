@@ -36,7 +36,10 @@ mod tests {
         let json = r#"{"username":"alice","plugins":{"key-auth":{"key":"secret-key"}}}"#;
         let c: Consumer = serde_json::from_str(json).unwrap();
         assert_eq!(c.username, "alice");
-        let key_auth = c.plugins.get("key-auth").expect("key-auth plugin must be present");
+        let key_auth = c
+            .plugins
+            .get("key-auth")
+            .expect("key-auth plugin must be present");
         assert_eq!(key_auth["key"], "secret-key");
     }
 
@@ -48,7 +51,8 @@ mod tests {
             desc: Some("test user".into()),
             labels: Default::default(),
         };
-        c.plugins.insert("key-auth".into(), serde_json::json!({"key": "s3cr3t"}));
+        c.plugins
+            .insert("key-auth".into(), serde_json::json!({"key": "s3cr3t"}));
         c.labels.insert("env".into(), "prod".into());
         let json = serde_json::to_string(&c).unwrap();
         let decoded: Consumer = serde_json::from_str(&json).unwrap();

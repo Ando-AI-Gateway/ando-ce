@@ -5,7 +5,7 @@ use ando_core::router::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// PUT /apisix/admin/routes/:id
@@ -35,7 +35,10 @@ pub async fn put_route(
     // Persist to file (no-op if state_file is None)
     persist::save_state(&state);
 
-    (StatusCode::OK, Json(json!({"id": route.id, "status": "created"})))
+    (
+        StatusCode::OK,
+        Json(json!({"id": route.id, "status": "created"})),
+    )
 }
 
 /// GET /apisix/admin/routes/:id
@@ -64,9 +67,7 @@ pub async fn delete_route(
 }
 
 /// GET /apisix/admin/routes
-pub async fn list_routes(
-    State(state): State<Arc<AdminState>>,
-) -> Json<Value> {
+pub async fn list_routes(State(state): State<Arc<AdminState>>) -> Json<Value> {
     let routes: Vec<Route> = state.cache.all_routes();
     Json(json!({"list": routes, "total": routes.len()}))
 }
