@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDashboard, apiPut, apiDelete, type Route } from "@/lib/api";
 import {
   Card, Tag, Button, Modal, FormField, Input, Select,
@@ -35,8 +35,17 @@ function TestRequestModal({
     route?.methods && route.methods.length > 0 ? route.methods[0] : "GET";
 
   const [proxyBase, setProxyBase] = useState("http://localhost:9080");
+  const [editingBase, setEditingBase] = useState(false);
+  const baseInputRef = useRef<HTMLInputElement>(null);
   const [method, setMethod] = useState(defaultMethod);
   const [path, setPath] = useState(defaultPath);
+
+  // Auto-detect proxy host from current page hostname
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setProxyBase(`http://${window.location.hostname}:9080`);
+    }
+  }, []);
   const [headers, setHeaders] = useState<TestHeader[]>([
     { key: "Content-Type", value: "application/json", id: Date.now() },
   ]);
@@ -112,15 +121,6 @@ function TestRequestModal({
       title={`Test Route: ${route?.id ?? ""}`}
     >
       <div className="space-y-3">
-        {/* Proxy base URL */}
-        <FormField label="Proxy base URL (Ando data plane, default port 9080)">
-          <Input
-            value={proxyBase}
-            onChange={(e) => setProxyBase(e.target.value)}
-            placeholder="http://localhost:9080"
-          />
-        </FormField>
-
         {/* Method + path row */}
         <div className="flex gap-2">
           <div className="w-28">
@@ -139,9 +139,28 @@ function TestRequestModal({
           </div>
         </div>
 
-        {/* Full URL preview */}
-        <div className="rounded-md bg-zinc-900 px-3 py-1.5 font-mono text-[10px] text-zinc-500 break-all">
-          {proxyBase.replace(/\/$/, "")}{path}
+        {/* Full URL preview + proxy edit */}
+        <div className="rounded-md bg-zinc-900 px-3 py-1.5 font-mono text-[10px] text-zinc-500 break-all flex items-center gap-1.5">
+          <span className="flex-1 break-all">{proxyBase.replace(/\/$/, "")}{path}</span>
+          {editingBase ? (
+            <input
+              ref={baseInputRef}
+              value={proxyBase}
+              onChange={(e) => setProxyBase(e.target.value)}
+              onBlur={() => setEditingBase(false)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setEditingBase(false); }}
+              className="ml-1 w-52 rounded border border-zinc-600 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300 outline-none focus:border-zinc-400"
+              autoFocus
+            />
+          ) : (
+            <button
+              onClick={() => { setEditingBase(true); setTimeout(() => baseInputRef.current?.select(), 0); }}
+              className="ml-1 shrink-0 text-[10px] text-zinc-600 hover:text-zinc-300"
+              title="Change proxy URL"
+            >
+              change proxy
+            </button>
+          )}
         </div>
 
         {/* Request headers */}
