@@ -1,4 +1,3 @@
-use ando_core::config::GatewayConfig;
 use ando_core::route::Route;
 use ando_core::router::Router;
 use ando_core::service::Service;
@@ -46,8 +45,6 @@ pub struct ProxyWorker {
     // ── Shared immutable ──
     plugin_registry: Arc<PluginRegistry>,
     config_cache: ConfigCache,
-    #[allow(dead_code)]
-    config: Arc<GatewayConfig>,
 }
 
 impl ProxyWorker {
@@ -55,7 +52,6 @@ impl ProxyWorker {
         router: Arc<Router>,
         plugin_registry: Arc<PluginRegistry>,
         config_cache: ConfigCache,
-        config: Arc<GatewayConfig>,
     ) -> Self {
         let mut worker = Self {
             router_version: router.version(),
@@ -66,7 +62,6 @@ impl ProxyWorker {
             consumer_keys: HashMap::new(),
             plugin_registry,
             config_cache,
-            config,
         };
         worker.snapshot_from_cache();
         worker
@@ -529,7 +524,6 @@ pub fn status_text(status: u16) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ando_core::config::GatewayConfig;
     use ando_core::consumer::Consumer;
     use ando_core::route::Route;
     use ando_core::router::Router;
@@ -546,8 +540,7 @@ mod tests {
         cache: ConfigCache,
     ) -> ProxyWorker {
         let router = Arc::new(Router::build(routes, 1).unwrap());
-        let config = Arc::new(GatewayConfig::default());
-        ProxyWorker::new(router, Arc::new(registry), cache, config)
+        ProxyWorker::new(router, Arc::new(registry), cache)
     }
 
     fn make_worker(routes: Vec<Route>) -> ProxyWorker {

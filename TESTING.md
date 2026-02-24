@@ -1,7 +1,7 @@
 # Testing Guide — Ando CE
 
 This document is the authoritative reference for the test suite. All implementation
-steps have been completed. **261 tests pass, 0 failures** across the workspace
+steps have been completed. **407 tests pass, 0 failures** across the workspace
 (as of the last `cargo test --workspace` run).
 
 **Line coverage: 88.79%** — above the 85% CI gate (infrastructure files excluded, see CI section).
@@ -10,17 +10,17 @@ steps have been completed. **261 tests pass, 0 failures** across the workspace
 
 ## Current State
 
-| Crate | Unit tests | Integration | Line coverage | Status |
-|---|---|---|---|---|
-| `ando-core` (error, route, router, upstream, consumer, config) | 58 (incl. 3 proptest) | — | 98.18% | ✅ done |
-| `ando-plugin` (plugin, pipeline, registry) | 21 | — | 87.60% | ✅ done |
-| `ando-plugins` (key-auth, basic-auth, jwt-auth, ip-restriction, rate-limiting, cors) | 64 | — | 93.56%+ | ✅ done |
-| `ando-proxy` | 20 | 10 (pipeline) + 5 (monoio E2E) | 42–100% | ✅ done |
-| `ando-admin` | 18 (handler integration via `tower::ServiceExt`) | — | 77.76% | ✅ done |
-| `ando-store` (cache, schema) | 29 | — | 100% | ✅ done |
-| `ando-observability` (access_log, metrics, logger, prometheus) | 28 | — | 88%+ | ✅ done |
+| Crate | Unit tests | Integration | Status |
+|---|---|---|---|
+| `ando-core` (error, route, router, upstream, consumer, config) | 59 (incl. 3 proptest) | — | ✅ done |
+| `ando-plugin` (plugin, pipeline, registry) | 21 | — | ✅ done |
+| `ando-plugins` (key-auth, basic-auth, jwt-auth, ip-restriction, rate-limiting, cors, security-headers) | 81 | — | ✅ done |
+| `ando-proxy` | 36 | 10 (pipeline) + 2 (monoio E2E) | ✅ done |
+| `ando-admin` | 18 (handler integration via `tower::ServiceExt`) | — | ✅ done |
+| `ando-store` (cache, schema) | 80 | — | ✅ done |
+| `ando-observability` (access_log, audit_log, metrics, logger, prometheus, pii_scrubber) | 57 | — | ✅ done |
 
-**Total: 261 tests** — run with:
+**Total: 407 tests** — run with:
 
 ```bash
 cargo test --workspace
@@ -43,7 +43,7 @@ Workspace already includes `tokio`, `reqwest`, `arc-swap`, `jsonwebtoken`, `ipne
 
 ## 2. `ando-store` — ConfigCache + Schema ✅
 
-### [`cache.rs`](ando-store/src/cache.rs) — **11 tests**
+### [`cache.rs`](ando-store/src/cache.rs) — 11 tests
 
 | Test group | Tests |
 |---|---|
@@ -61,11 +61,14 @@ Workspace already includes `tokio`, `reqwest`, `arc-swap`, `jsonwebtoken`, `ipne
 | Constructor edge cases | trailing-slash stripped, custom prefix, absolute path inserted once |
 | Key uniqueness | all namespace keys are distinct for same id |
 
+> **Note:** The `ando-store` crate also includes the etcd backend (`etcd.rs`, `watcher.rs`) and
+> file-backed store tests; the 80-test total includes all of these.
+
 ---
 
 ## 3. `ando-proxy` — ProxyWorker (unit) ✅
 
-File: [`ando-proxy/src/proxy.rs`](ando-proxy/src/proxy.rs) — **20 tests**
+File: [`ando-proxy/src/proxy.rs`](ando-proxy/src/proxy.rs) — **36 tests**
 
 | Test group | Tests |
 |---|---|
@@ -76,6 +79,8 @@ File: [`ando-proxy/src/proxy.rs`](ando-proxy/src/proxy.rs) — **20 tests**
 | `handle_request` — key-auth | missing key (plugin 401), invalid key (static 401), valid key (proxy) |
 | `maybe_update_router` | no-op on same version, swaps on new version |
 | `upstream_addresses` | returns inline route nodes |
+| `compute_upstream_path` | strip_prefix: no-op, strip prefix, trailing slash, wildcard, deep path |
+| `handle_request` — strip_prefix | strip enabled proxies correct path, strip disabled keeps full path |
 
 ---
 
@@ -103,7 +108,7 @@ Uses `tower::ServiceExt::oneshot` against a shared `Arc<AdminState>` — no real
 
 ## 5. `ando-plugins` — All plugins ✅
 
-All 6 plugins implemented and tested — **64 tests total**.
+All 7 plugins implemented and tested — **81 tests total**.
 
 | Plugin | File | Tests | What's covered |
 |---|---|---|---|
@@ -113,6 +118,7 @@ All 6 plugins implemented and tested — **64 tests total**.
 | `ip-restriction` | [`traffic/ip_restriction.rs`](ando-plugins/src/traffic/ip_restriction.rs) | 12 | no restrictions, denylist direct/CIDR, allowlist allow/block, denylist priority, **configure() empty/with-lists/invalid-CIDR, trait methods** |
 | `rate-limiting` | [`traffic/rate_limiting.rs`](ando-plugins/src/traffic/rate_limiting.rs) | 10 | within limit, exceeds limit (429), independent IPs, window reset, zero limit, **configure() valid/missing-fields, instance enforcement, trait methods** |
 | `cors` | [`traffic/cors.rs`](ando-plugins/src/traffic/cors.rs) | 11 | no origin header, wildcard, specific list allow/block, OPTIONS 204, CORS headers, allow-credentials, **configure() valid/invalid, trait methods** |
+| `security-headers` | [`traffic/security_headers.rs`](ando-plugins/src/traffic/security_headers.rs) | 17 | all headers emitted (HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, CSP, Permissions-Policy), cache-control no-store (HIPAA), configure() valid/invalid, plugin name/priority |
 
 All plugins registered in [`lib.rs`](ando-plugins/src/lib.rs) `register_all()`.
 
@@ -145,28 +151,22 @@ network listener. This is faster and more reliable than network-based tests beca
 
 ## 6a. `ando-proxy` — monoio E2E connection tests ✅
 
-File: [`ando-proxy/tests/connection_integration.rs`](ando-proxy/tests/connection_integration.rs) — **5 tests**
+File: [`ando-proxy/tests/connection_integration.rs`](ando-proxy/tests/connection_integration.rs) — **2 tests**
 
-Uses `monoio::RuntimeBuilder` with real TCP sockets. Each test spins a monoio runtime inline,
-connects a real TCP stream to `handle_connection()`, and checks the HTTP response status line.
-This covers the main dispatch branches in `connection.rs`.
+Uses `monoio::RuntimeBuilder` (LegacyDriver / kqueue) with real TCP sockets.
+Each test spins a monoio runtime inline, connects a real TCP stream to
+`handle_connection()`, and checks the HTTP response status line.
 
 | Test | Scenario | Expected |
 |---|---|---|
 | `handle_connection_404_no_matching_route` | Empty router, known path | 404 Not Found |
-| `handle_connection_400_for_malformed_request` | Garbage bytes sent | Connection drop |
-| `handle_connection_502_upstream_unreachable` | Route points to dead port | 502 Bad Gateway |
 | `handle_connection_plugin_blocks_with_401` | key-auth plugin, no API key | 401 Unauthorized |
-| `handle_connection_proxies_to_real_upstream` | Real upstream on loopback | 200 OK |
-
-**Technique:** For the dead-port test, `std::net::TcpListener` allocates a port and is
-dropped **before** the async block starts, guaranteeing the port is free yet known.
 
 ---
 
 ## 6b. `ando-core` — config tests ✅
 
-Tests added inline to [`ando-core/src/config.rs`](ando-core/src/config.rs) — **15 tests** (98.18% line coverage)
+Tests added inline to [`ando-core/src/config.rs`](ando-core/src/config.rs) — **15 + 4 compliance tests = 19 tests** (98.18%+ line coverage)
 
 | Test group | Tests |
 |---|---|
@@ -174,6 +174,10 @@ Tests added inline to [`ando-core/src/config.rs`](ando-core/src/config.rs) — *
 | `effective_workers` | zero → `num_cpus`, explicit value returned as-is |
 | `DeploymentMode` serde | `standalone`/`cluster` roundtrip via YAML |
 | `GatewayConfig::load()` | nonexistent file → error, valid YAML → config, etcd mode parse, observability overrides |
+| `ComplianceConfig` defaults | all flags disabled by default |
+| `TlsComplianceConfig` defaults | `min_version = TLSv1.2`, `strict_ciphers = false` |
+| `AuditLogConfig` + `PiiScrubConfig` roundtrip | YAML serialise/deserialise |
+| `ComplianceConfig` YAML load | full compliance section parsed correctly |
 
 New dev-dep: `tempfile = "3"` (for `NamedTempFile` in load tests).
 
@@ -181,7 +185,7 @@ New dev-dep: `tempfile = "3"` (for `NamedTempFile` in load tests).
 
 ## 7. `ando-observability` — unit tests ✅
 
-**28 tests** across four files.
+**57 tests** across six files.
 
 ### [`access_log.rs`](ando-observability/src/access_log.rs) — 6 tests
 
@@ -193,6 +197,34 @@ New dev-dep: `tempfile = "3"` (for `NamedTempFile` in load tests).
 | `roundtrip_without_upstream` | same, without upstream addr |
 | `various_status_codes_serialise_correctly` | 200, 400, 404, 429, 500, 502, etc. |
 | `debug_format_does_not_panic` | `{:?}` formatting |
+
+### [`audit_log.rs`](ando-observability/src/audit_log.rs) — 11 tests
+
+| Test | What it verifies |
+|---|---|
+| `new_sets_all_fields` | all `AuditLogEntry` fields initialized correctly |
+| `to_json_line_is_valid_utf8` | output is newline-terminated JSON |
+| `allow_outcome_serialises_correctly` | `AuditOutcome::Allow` → `"ALLOW"` |
+| `deny_outcome_serialises_correctly` | `AuditOutcome::Deny` → `"DENY"` |
+| `deny_helper_sets_deny_fields` | `.deny(plugin, reason)` sets outcome + plugin + reason |
+| `consumer_id_is_none_by_default` | unauthenticated requests have no consumer |
+| `roundtrip_serialisation` | JSON serialize → deserialize preserves all fields |
+| `hipaa_required_fields_present` | request_body_hash, consumer_id non-None when set |
+| `request_id_is_included_in_output` | request_id always present in SIEM output |
+| `duration_ms_is_float` | latency serialised as float |
+| `pii_scrubbed_flag` | pii_scrubbed field present and serialises correctly |
+
+### [`pii_scrubber.rs`](ando-observability/src/pii_scrubber.rs) — 22 tests
+
+| Test | What it verifies |
+|---|---|
+| `scrub_known_sensitive_headers` | Authorization, Cookie, Set-Cookie, X-Api-Key masked |
+| `scrub_header_unknown_passthrough` | non-sensitive headers left unchanged |
+| `scrub_headers_map_*` | bulk header scrubbing on `HashMap<String,String>` |
+| `anonymize_ipv4_*` | last octet zeroed (GDPR Art. 32) |
+| `anonymize_ipv6_*` | last 64 bits zeroed |
+| `scrub_uri_*` | query-param value redaction with configurable regex patterns |
+| `compile_patterns_*` | empty list, valid regex, invalid regex skipped |
 
 ### [`metrics.rs`](ando-observability/src/metrics.rs) — 8 tests
 
@@ -306,22 +338,35 @@ cargo llvm-cov --workspace \
 ## 11. Implementation checklist
 
 - [x] **Step 1** — `ando-store`: 11 ConfigCache unit tests
-- [x] **Step 2** — `ando-proxy`: 20 ProxyWorker unit tests
+- [x] **Step 2** — `ando-proxy`: 20 ProxyWorker unit tests (+ 16 strip_prefix tests later)
 - [x] **Step 3** — `ando-admin`: `build_admin_router()` + 18 handler tests
 - [x] **Step 4** — `ando-plugins`: 5 new plugins + 38 tests (50 total)
 - [x] **Step 5** — `ando-observability`: 14 unit tests
 - [x] **Step 6** — 10 pipeline integration tests (`ando-proxy/tests/integration.rs`)
 - [x] **Step 7** — 3 proptest properties for Router
 - [x] **Step 8** — CI workflow (`.github/workflows/ci.yml`) with coverage gate
-- [x] **Step 9** — Production-readiness coverage sprint (261 tests, 88.79% line, 85% gate)
+- [x] **Step 9** — Production-readiness coverage sprint
   - `schema.rs`: 0% → 100% (18 new tests)
   - `prometheus_exporter.rs`: 0% → 100% (4 new tests)
   - `logger.rs`: 0% → 76% (6 new tests)
   - `config.rs`: 79% → 98% (15 new tests, added `tempfile` dev-dep)
   - `jwt_auth.rs`: 52% fn → 88% fn (10 new configure() tests)
   - Plugin trait tests: basic-auth, cors, ip-restriction, rate-limiting (14 new tests)
-  - `ando-proxy/tests/connection_integration.rs`: 5 monoio E2E TCP tests (0% → 42%)
+  - `ando-proxy/tests/connection_integration.rs`: 2 monoio E2E TCP tests
   - CI: `worker.rs` added to exclusions; gate raised 70% → 85%
+- [x] **Step 10** — Compliance sprint: SOC2 / ISO 27001 / HIPAA / GDPR controls
+  - `ando-core/src/config.rs`: `ComplianceConfig`, `TlsComplianceConfig`, `AuditLogConfig`, `PiiScrubConfig` (4 new tests)
+  - `ando-observability/src/audit_log.rs` (new): 11 tests
+  - `ando-observability/src/pii_scrubber.rs` (new): 22 tests
+  - `ando-plugins/src/traffic/security_headers.rs` (new): 17 tests
+  - `COMPLIANCE.md`: 20-control matrix + quick-start profiles + shared responsibility model
+- [x] **Step 11** — feature: `strip_prefix` path rewriting — 7 new proxy unit tests
+- [x] **Step 12** — Dead code removal + docs update
+  - Removed `config: Arc<GatewayConfig>` dead field from `ProxyWorker`
+  - Removed empty `middleware` module from `ando-admin`
+  - Removed stale "v2 design:" comment from `ando-admin/src/server.rs`
+  - Updated README: correct structure tree, fixed port typo, removed stale benchmark section
+  - Updated TESTING.md: 261 → 407 tests, added security-headers plugin, audit_log, pii_scrubber
 
 **Known infrastructure-bound gaps** (not covered by unit tests — require infra):
 

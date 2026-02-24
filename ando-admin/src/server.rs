@@ -29,10 +29,10 @@ pub struct AdminState {
 
 /// Start the admin API server on a dedicated tokio runtime.
 ///
-/// v2 design: The admin API is completely separate from the data plane.
-/// It runs on tokio (for axum compatibility) in its own thread. Config
-/// changes are applied to the shared ConfigCache + ArcSwap<Router>,
-/// which worker cores pick up via atomic loads.
+/// The admin API is completely separate from the data plane: it runs on
+/// tokio (for Axum compatibility) in its own OS thread. Config changes
+/// are applied to the shared ConfigCache + ArcSwap<Router> and worker
+/// cores pick them up via atomic loads on the next accept iteration.
 pub async fn start_admin(config: AdminConfig, state: Arc<AdminState>) -> anyhow::Result<()> {
     let app = build_admin_router(state);
 

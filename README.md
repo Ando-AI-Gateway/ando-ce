@@ -44,20 +44,16 @@ ando-ce/
 ├── Cargo.toml
 ├── Dockerfile
 ├── docker-compose.yml
-├── config/
-├── ando-core/
-├── ando-proxy/
-├── ando-plugin/
-├── ando-plugins/
-├── ando-store/
-├── ando-observability/
-├── ando-admin/
-├── ando-server/
-└── benchmark/    # Benchmark: Ando CE vs APISIX vs KrakenD vs Kong vs Tyk
-    ├── bench.sh
-    ├── docker-compose.yml
-    ├── ando-ce-bench.yaml
-    └── results/
+├── config/              # Default ando.yaml
+├── dashboard/           # Next.js admin dashboard (static export, embedded in binary)
+├── ando-core/           # Types: Route, Upstream, Consumer, Config, Router
+├── ando-proxy/          # Monoio worker: accept loop, plugin dispatch, connection pool
+├── ando-plugin/         # Plugin trait, pipeline, registry
+├── ando-plugins/        # Built-in plugins: auth + traffic
+├── ando-store/          # In-memory ConfigCache (DashMap) + JSON persistence
+├── ando-observability/  # Access log, audit log, metrics, PII scrubber
+├── ando-admin/          # Admin HTTP API (Axum/tokio) + dashboard handler
+└── ando-server/         # Binary entry point
 ```
 
 ## Quick Start
@@ -140,23 +136,8 @@ curl -X PUT http://localhost:9180/apisix/admin/routes/demo \
 curl http://localhost:9180/apisix/admin/routes
 
 # Delete a route
-curl -X DELETE http://localhost:8001/apisix/admin/routes/demo
+curl -X DELETE http://localhost:9180/apisix/admin/routes/demo
 ```
-
-## Benchmark
-
-```bash
-# Full benchmark (CE vs APISIX vs KrakenD vs Kong vs Tyk)
-./benchmark/bench.sh
-
-# Single scenario
-./benchmark/bench.sh plain
-
-# Override params
-BENCH_DURATION=60s BENCH_CONNECTIONS=400 ./benchmark/bench.sh all
-```
-
-Results are written to `benchmark/results/<timestamp>/report.md` with Mermaid charts.
 
 ## License
 

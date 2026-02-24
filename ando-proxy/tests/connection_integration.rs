@@ -4,7 +4,6 @@
 /// These tests exercise the I/O dispatch loop in connection.rs that cannot
 /// be covered by unit tests alone (monoio async I/O is not compatible with
 /// tokio's `#[tokio::test]`).
-use ando_core::config::GatewayConfig;
 use ando_core::router::Router;
 use ando_plugin::registry::PluginRegistry;
 use ando_proxy::connection::handle_connection;
@@ -29,8 +28,7 @@ fn make_worker(routes: Vec<serde_json::Value>) -> ProxyWorker {
     let router = Arc::new(Router::build(parsed, 1).unwrap());
     let registry = Arc::new(PluginRegistry::new());
     let cache = ConfigCache::new();
-    let config = Arc::new(GatewayConfig::default());
-    ProxyWorker::new(router, registry, cache, config)
+    ProxyWorker::new(router, registry, cache)
 }
 
 /// Extract the HTTP status line from the first line of a raw response.
@@ -174,8 +172,7 @@ fn handle_connection_plugin_response_key_auth_blocks_missing_key() {
         let mut registry = PluginRegistry::new();
         registry.register(Arc::new(ando_plugins::auth::key_auth::KeyAuthPlugin));
         let cache = ConfigCache::new();
-        let config = Arc::new(GatewayConfig::default());
-        let worker = ProxyWorker::new(router, Arc::new(registry), cache, config);
+        let worker = ProxyWorker::new(router, Arc::new(registry), cache);
 
         let listener = monoio::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let proxy_addr = listener.local_addr().unwrap();

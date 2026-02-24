@@ -92,7 +92,6 @@ async fn worker_loop(worker_id: usize, shared: Arc<SharedState>, addr: String) {
         shared.router.load_full(),
         Arc::clone(&shared.plugin_registry),
         shared.config_cache.clone(),
-        Arc::clone(&shared.config),
     );
 
     // ── Pre-warm connection pool ──
